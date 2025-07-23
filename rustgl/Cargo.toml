@@ -1,0 +1,14 @@
+[package]
+name = "rustgl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cgmath = "0.16.1"
+gl = "0.14.0"
+glfw = "0.23.0"
+image = "0.19.0"
+# only needed from chapter 3 on
+tobj = "0.1.6"
+num = "0.2.0"
+rand = "0.5.5"
