@@ -12,23 +12,33 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::mpsc::Receiver;
 
+type Triangle = [f32; 9];
+
 // settings
 const SCR_WIDTH: u32 = 800;
 const SCR_HEIGHT: u32 = 600;
 
 const VSHADER_CODE: &str = r#"#version 330 core
-    layout (location = 0) in vec3 pos;;
+    layout (location = 0) in vec3 pos;
 
     void main() {
         gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
     }
 "#;
 
-const FSHADER_CODE: &str = r#"#version 330 core
+const FS_PINK: &str = r#"#version 330 core
     out vec4 final_color;
 
     void main() {
-        final_color = vec4(1.0, 0.5, 0.2, 1.0);
+        final_color = vec4(0.9, 0.4, 0.5, 1.0);
+    }
+"#;
+
+const FS_ORANGE: &str = r#"#version 330 core
+    out vec4 final_color;
+
+    void main() {
+        final_color = vec4(1.0, 0.5, 0.3, 1.0);
     }
 "#;
 
@@ -54,11 +64,54 @@ pub fn main() {
     // gl: load all OpenGL function pointers
     // ---------------------------------------
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
+    let triangles: Vec<Triangle> = vec![
+        [0.0, 0.0, 0.0, -0.1, 0.0, 0.0, 0.0, -0.1, 0.0],
+        [0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.1, 0.0],
+    ];
+    let shader_orange = create_shader_program(VSHADER_CODE.as_bytes(), FS_ORANGE.as_bytes());
+    let shader_pink = create_shader_program(VSHADER_CODE.as_bytes(), FS_PINK.as_bytes());
 
-    let (shader_program, vao) = unsafe {
+    let vaos = gen_vaos(triangles);
+
+    // render loop
+    // -----------
+    while !window.should_close() {
+        // events
+        // -----
+        process_events(&mut window, &events);
+
+        unsafe {
+            gl::ClearColor(0.2, 0.3, 0.3, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+
+            // Draw Triangles
+            let mut alt = true;
+            for vao in vaos.iter() {
+                if alt {
+                    gl::UseProgram(shader_orange);
+                } else {
+                    gl::UseProgram(shader_pink);
+                }
+
+                gl::BindVertexArray(*vao);
+                gl::DrawArrays(gl::TRIANGLES, 0, 3);
+
+                alt = !alt;
+            }
+        }
+
+        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
+        // -------------------------------------------------------------------------------
+        window.swap_buffers();
+        glfw.poll_events();
+    }
+}
+
+fn create_shader_program(v_code: &[u8], f_code: &[u8]) -> u32 {
+    unsafe {
         // Create Vertex Shader
         let vshader = gl::CreateShader(gl::VERTEX_SHADER);
-        let vshader_src = CString::new(VSHADER_CODE.as_bytes()).unwrap();
+        let vshader_src = CString::new(v_code).unwrap();
         gl::ShaderSource(vshader, 1, &vshader_src.as_ptr(), ptr::null());
         gl::CompileShader(vshader);
 
@@ -81,7 +134,7 @@ pub fn main() {
 
         // Create Fragment Shader
         let fshader = gl::CreateShader(gl::FRAGMENT_SHADER);
-        let fshader_src = CString::new(FSHADER_CODE.as_bytes()).unwrap();
+        let fshader_src = CString::new(f_code).unwrap();
         gl::ShaderSource(fshader, 1, &fshader_src.as_ptr(), ptr::null());
         gl::CompileShader(fshader);
         gl::GetShaderiv(fshader, gl::COMPILE_STATUS, &mut success);
@@ -119,61 +172,43 @@ pub fn main() {
         }
         gl::DeleteShader(vshader);
         gl::DeleteShader(fshader);
-        gl::DeleteProgram(shader_program);
 
-        // Create Geometry
-        let vertices: [f32; 18] = [
-            0.0, 0.0, 0.0, -0.1, 0.0, 0.0, 0.0, -0.1, 0.0, // triangle 1
-            0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.1, 0.0, // triangle 2
-        ];
+        shader_program
+    }
+}
+
+fn gen_vaos(triangles: Vec<Triangle>) -> Vec<u32> {
+    let mut vaos = vec![];
+    for triangle in triangles.iter() {
         let (mut vao, mut vbo) = (0, 0);
-        gl::GenVertexArrays(1, &mut vao);
-        gl::GenVertexArrays(1, &mut vbo);
-        gl::BindVertexArray(vao);
-        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-        gl::BufferData(
-            gl::ARRAY_BUFFER,
-            (vertices.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-            &vertices[0] as *const f32 as *const c_void,
-            gl::STATIC_DRAW,
-        );
-        gl::VertexAttribPointer(
-            0,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            3 * mem::size_of::<GLfloat>() as GLsizei,
-            ptr::null(),
-        );
-        gl::EnableVertexAttribArray(0);
-        gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        gl::BindVertexArray(0);
-
-        (shader_program, vao)
-    };
-
-    // render loop
-    // -----------
-    while !window.should_close() {
-        // events
-        // -----
-        process_events(&mut window, &events);
 
         unsafe {
-            gl::ClearColor(0.2, 0.3, 0.3, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::GenBuffers(1, &mut vbo);
+            gl::GenVertexArrays(1, &mut vao);
 
-            // Draw Triangles
-            gl::DrawArrays(gl::TRIANGLES, 0, 3);
             gl::BindVertexArray(vao);
-            gl::UseProgram(shader_program);
+            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (triangle.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+                &triangle[0] as *const f32 as *const c_void,
+                gl::STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                3 * mem::size_of::<GLfloat>() as GLsizei,
+                ptr::null(),
+            );
+            gl::EnableVertexAttribArray(0);
         }
 
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
-        window.swap_buffers();
-        glfw.poll_events();
+        vaos.push(vao);
     }
+
+    vaos
 }
 
 // NOTE: not the same version as in common.rs!
