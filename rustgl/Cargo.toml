@@ -7,7 +7,7 @@ edition = "2024"
 cgmath = "0.16.1"
 gl = "0.14.0"
 glfw = "0.23.0"
-image = "0.19.0"
+image = "0.25.6"
 # only needed from chapter 3 on
 tobj = "0.1.6"
 num = "0.2.0"

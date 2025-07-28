@@ -1,46 +1,27 @@
 extern crate glfw;
 
-use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr};
-
 use self::glfw::{Action, Context, Key};
+use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr};
 
 extern crate gl;
 
+use image::ImageReader;
 use std::ffi::CString;
 use std::mem;
 use std::os::raw::c_void;
 use std::ptr;
 use std::sync::mpsc::Receiver;
+use std::time::Instant;
 
-type Triangle = [f32; 9];
+pub mod shader;
+use shader::{fragment_shader, shader_builder, vertex_shader};
+
+type Triangle = [i32; 3];
+type Vertex = [f32; 8];
 
 // settings
 const SCR_WIDTH: u32 = 800;
 const SCR_HEIGHT: u32 = 600;
-
-const VSHADER_CODE: &str = r#"#version 330 core
-    layout (location = 0) in vec3 pos;
-
-    void main() {
-        gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
-    }
-"#;
-
-const FS_PINK: &str = r#"#version 330 core
-    out vec4 final_color;
-
-    void main() {
-        final_color = vec4(0.9, 0.4, 0.5, 1.0);
-    }
-"#;
-
-const FS_ORANGE: &str = r#"#version 330 core
-    out vec4 final_color;
-
-    void main() {
-        final_color = vec4(1.0, 0.5, 0.3, 1.0);
-    }
-"#;
 
 pub fn main() {
     // glfw: initialize and configure
@@ -61,20 +42,25 @@ pub fn main() {
     window.set_key_polling(true);
     window.set_framebuffer_size_polling(true);
 
-    // gl: load all OpenGL function pointers
-    // ---------------------------------------
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
-    let triangles: Vec<Triangle> = vec![
-        [0.0, 0.0, 0.0, -0.1, 0.0, 0.0, 0.0, -0.1, 0.0],
-        [0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.1, 0.0],
+
+    // Vertices are 3f Position, 3f Colour, 2f Texture Coordinate
+    let vertices: Vec<Vertex> = vec![
+        [-0.5, -0.5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        [0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0],
+        [0.5, 0.5, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0],
+        [-0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0],
     ];
-    let shader_orange = create_shader_program(VSHADER_CODE.as_bytes(), FS_ORANGE.as_bytes());
-    let shader_pink = create_shader_program(VSHADER_CODE.as_bytes(), FS_PINK.as_bytes());
+    let indices: Vec<Triangle> = vec![[0, 1, 2], [0, 2, 3]];
 
-    let vaos = gen_vaos(triangles);
+    let texture = load_img();
 
-    // render loop
-    // -----------
+    let shader_vcolour = shader_builder::create_shader_program(
+        vertex_shader::VSHADER_CODE.as_bytes(),
+        fragment_shader::FS_VERTEX.as_bytes(),
+    );
+
+    let start = Instant::now();
     while !window.should_close() {
         // events
         // -----
@@ -83,20 +69,19 @@ pub fn main() {
         unsafe {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::UseProgram(shader_vcolour);
+
+            let clr_dta = CString::new("colour_shift").unwrap();
+            let clr_str: *const GLchar = clr_dta.as_ptr() as *const GLchar;
+            let colour = (start.elapsed().as_secs_f32().sin() / 2f32) + 0.5;
+            let colour_shift = gl::GetUniformLocation(shader_vcolour, clr_str);
+            gl::Uniform4f(colour_shift, 0.0, colour, 1.0, 1.0);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
 
             // Draw Triangles
-            let mut alt = true;
             for vao in vaos.iter() {
-                if alt {
-                    gl::UseProgram(shader_orange);
-                } else {
-                    gl::UseProgram(shader_pink);
-                }
-
                 gl::BindVertexArray(*vao);
                 gl::DrawArrays(gl::TRIANGLES, 0, 3);
-
-                alt = !alt;
             }
         }
 
@@ -107,102 +92,108 @@ pub fn main() {
     }
 }
 
-fn create_shader_program(v_code: &[u8], f_code: &[u8]) -> u32 {
+fn load_img() -> u32 {
+    let texture = ImageReader::open("res/stone-wall.jpg").unwrap();
+    let tex_dynim = texture.decode().unwrap();
+    let tex_bytes: Vec<u8> = tex_dynim.to_rgb8().into_raw();
+
+    let mut tex_addr: u32 = 0;
+
     unsafe {
-        // Create Vertex Shader
-        let vshader = gl::CreateShader(gl::VERTEX_SHADER);
-        let vshader_src = CString::new(v_code).unwrap();
-        gl::ShaderSource(vshader, 1, &vshader_src.as_ptr(), ptr::null());
-        gl::CompileShader(vshader);
+        gl::GenTextures(1, &mut tex_addr);
+        gl::BindTexture(gl::TEXTURE_2D, tex_addr);
 
-        let mut success = gl::FALSE as GLint;
-        let mut info_log = Vec::with_capacity(512);
-        info_log.set_len(512 - 1);
-        gl::GetShaderiv(vshader, gl::COMPILE_STATUS, &mut success);
-        if success != gl::TRUE as GLint {
-            gl::GetShaderInfoLog(
-                vshader,
-                512,
-                ptr::null_mut(),
-                info_log.as_mut_ptr() as *mut GLchar,
-            );
-            println!(
-                "Error compiling vertex shader:{}",
-                str::from_utf8(&info_log).unwrap()
-            );
-        }
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as GLint);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as GLint);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
 
-        // Create Fragment Shader
-        let fshader = gl::CreateShader(gl::FRAGMENT_SHADER);
-        let fshader_src = CString::new(f_code).unwrap();
-        gl::ShaderSource(fshader, 1, &fshader_src.as_ptr(), ptr::null());
-        gl::CompileShader(fshader);
-        gl::GetShaderiv(fshader, gl::COMPILE_STATUS, &mut success);
-        if success != gl::TRUE as GLint {
-            gl::GetShaderInfoLog(
-                fshader,
-                512,
-                ptr::null_mut(),
-                info_log.as_mut_ptr() as *mut GLchar,
-            );
-            println!(
-                "Error compiling fragment shader:{}",
-                str::from_utf8(&info_log).unwrap()
-            );
-        }
-
-        // Link Shaders
-        let shader_program = gl::CreateProgram();
-        gl::AttachShader(shader_program, vshader);
-        gl::AttachShader(shader_program, fshader);
-        gl::LinkProgram(shader_program);
-
-        gl::GetProgramiv(shader_program, gl::LINK_STATUS, &mut success);
-        if success != gl::TRUE as GLint {
-            gl::GetProgramInfoLog(
-                shader_program,
-                512,
-                ptr::null_mut(),
-                info_log.as_mut_ptr() as *mut GLchar,
-            );
-            println!(
-                "Error linking shader program:{}",
-                str::from_utf8(&info_log).unwrap()
-            );
-        }
-        gl::DeleteShader(vshader);
-        gl::DeleteShader(fshader);
-
-        shader_program
+        gl::TexImage2D(
+            gl::TEXTURE_2D,
+            0,
+            gl::RGB8 as GLint,
+            tex_dynim.width().try_into().unwrap(),
+            tex_dynim.height().try_into().unwrap(),
+            0,
+            gl::RGB,
+            gl::UNSIGNED_BYTE,
+            tex_bytes.as_ptr().cast(),
+        );
+        gl::GenerateMipmap(gl::TEXTURE_2D);
     }
+
+    tex_addr
 }
 
-fn gen_vaos(triangles: Vec<Triangle>) -> Vec<u32> {
+fn create_element_buffer(indices: Vec<Triangle>) -> u32 {
+    let mut ebo: u32 = 0;
+
+    unsafe {
+        gl::GenBuffers(1, &mut ebo);
+        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+        gl::BufferData(
+            gl::ELEMENT_ARRAY_BUFFER,
+            (indices.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+            &indices[0],
+            gl::STATIC_DRAW,
+        );
+    }
+
+    ebo
+}
+
+fn gen_vaos(vertices: Vec<Vertex>) -> Vec<u32> {
     let mut vaos = vec![];
-    for triangle in triangles.iter() {
-        let (mut vao, mut vbo) = (0, 0);
+    let (mut vao, mut vbo) = (0, 0);
 
+    unsafe {
+        gl::GenBuffers(1, &mut vbo);
+        gl::GenVertexArrays(1, &mut vao);
+        gl::BindVertexArray(vao);
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+    }
+
+    for vertex in vertices.iter() {
         unsafe {
-            gl::GenBuffers(1, &mut vbo);
-            gl::GenVertexArrays(1, &mut vao);
-
-            gl::BindVertexArray(vao);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
                 gl::ARRAY_BUFFER,
-                (triangle.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-                &triangle[0] as *const f32 as *const c_void,
+                (vertex.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+                &vertex[0] as *const f32 as *const c_void,
                 gl::STATIC_DRAW,
             );
+
+            // Position
             gl::VertexAttribPointer(
                 0,
                 3,
                 gl::FLOAT,
                 gl::FALSE,
-                3 * mem::size_of::<GLfloat>() as GLsizei,
+                8 * mem::size_of::<GLfloat>() as GLsizei,
                 ptr::null(),
             );
             gl::EnableVertexAttribArray(0);
+
+            // Colour
+            gl::VertexAttribPointer(
+                1,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                8 * mem::size_of::<GLfloat>() as GLsizei,
+                (3 * mem::size_of::<GLfloat>()) as *const _,
+            );
+            gl::EnableVertexAttribArray(1);
+
+            // Texture Coords
+            gl::VertexAttribPointer(
+                2,
+                2,
+                gl::FLOAT,
+                gl::FALSE,
+                8 * mem::size_of::<GLfloat>() as GLsizei,
+                (6 * mem::size_of::<GLfloat>()) as *const _,
+            );
+            gl::EnableVertexAttribArray(2);
         }
 
         vaos.push(vao);
