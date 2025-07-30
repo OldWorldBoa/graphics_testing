@@ -1,19 +1,20 @@
+extern crate gl;
 extern crate glfw;
 
 use self::glfw::{Action, Context, Key};
 use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr};
 
-extern crate gl;
-
 use image::ImageReader;
+use linalg::transform;
+use shader::{fragment_shader, shader_builder, vertex_shader};
 use std::ffi::CString;
 use std::mem;
 use std::os::raw::c_void;
 use std::ptr;
 use std::sync::mpsc::Receiver;
 
+pub mod linalg;
 pub mod shader;
-use shader::{fragment_shader, shader_builder, vertex_shader};
 
 // settings
 const SCR_WIDTH: u32 = 800;
@@ -43,6 +44,7 @@ pub fn main() {
 
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
 
+    // Vertex creation
     // Vertices are 3f Position, 3f Colour, 2f Texture Coordinate
     let vertices: Vec<f32> = vec![
         -0.5, -0.5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, //v
@@ -58,37 +60,45 @@ pub fn main() {
     let ebo = create_element_buffer(indices);
     unsafe {
         gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+    }
+
+    // Texture creation
+    let stone_wall = load_img("res/stone-wall.jpg");
+    let troll_face = load_img("res/troll-face.jpg");
+    unsafe {
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as GLint);
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as GLint);
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
     }
-    let stone_wall = load_img("res/stone-wall.jpg");
-    let troll_face = load_img("res/troll-face.jpg");
 
-    let shader_vcolour = shader_builder::create_shader_program(
+    let shader_program = shader_builder::create_shader_program(
         vertex_shader::VSHADER_CODE.as_bytes(),
         fragment_shader::FS_VERTEX.as_bytes(),
     );
 
+    // Transformations
+    let t = transform::blank();
+
     while !window.should_close() {
         // events
-        // -----
         process_events(&mut window, &events);
 
         unsafe {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
-            gl::UseProgram(shader_vcolour);
+            gl::UseProgram(shader_program);
 
+            // Set textures
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, stone_wall);
             gl::ActiveTexture(gl::TEXTURE1);
             gl::BindTexture(gl::TEXTURE_2D, troll_face);
 
-            gl::Uniform1i(get_uniform_location(shader_vcolour, "texture1"), 0);
-            gl::Uniform1i(get_uniform_location(shader_vcolour, "texture2"), 1);
-            gl::Uniform1f(get_uniform_location(shader_vcolour, "tex_shift"), TEX_SHIFT);
+            // Send shader uniforms
+            gl::Uniform1i(get_uniform_location(shader_program, "texture1"), 0);
+            gl::Uniform1i(get_uniform_location(shader_program, "texture2"), 1);
+            gl::Uniform1f(get_uniform_location(shader_program, "tex_shift"), TEX_SHIFT);
 
             // Draw Triangles
             gl::BindVertexArray(vao);
@@ -97,7 +107,6 @@ pub fn main() {
         }
 
         // glfw: swap buffers and poll IO events (keys pressed/re leased, mouse moved etc.)
-        // -------------------------------------------------------------------------------
         window.swap_buffers();
         glfw.poll_events();
     }
