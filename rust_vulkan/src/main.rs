@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-
 #![allow(
     dead_code,
     unused_variables,
     clippy::manual_slice_size_calculation,
     clippy::too_many_arguments,
-    clippy::unnecessary_wraps
+    clippy::unnecessary_wraps,
+    unsafe_op_in_unsafe_fn
 )]
 
 use std::collections::HashSet;
@@ -43,7 +43,6 @@ const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 /// The maximum number of frames that can be processed concurrently.
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
-#[rustfmt::skip]
 fn main() -> Result<()> {
     pretty_env_logger::init();
 
@@ -67,7 +66,7 @@ fn main() -> Result<()> {
                 // Render a frame if our Vulkan app is not being destroyed.
                 WindowEvent::RedrawRequested if !elwt.exiting() && !minimized => {
                     unsafe { app.render(&window) }.unwrap();
-                },
+                }
                 // Mark the window as having been resized.
                 WindowEvent::Resized(size) => {
                     if size.width == 0 || size.height == 0 {
@@ -80,10 +79,12 @@ fn main() -> Result<()> {
                 // Destroy our Vulkan app.
                 WindowEvent::CloseRequested => {
                     elwt.exit();
-                    unsafe { app.destroy(); }
+                    unsafe {
+                        app.destroy();
+                    }
                 }
                 _ => {}
-            }
+            },
             _ => {}
         }
     })?;
@@ -198,7 +199,6 @@ impl App {
     }
 
     /// Recreates the swapchain for our Vulkan app.
-    #[rustfmt::skip]
     unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
         self.device.device_wait_idle()?;
         self.destroy_swapchain();
@@ -208,40 +208,59 @@ impl App {
         create_pipeline(&self.device, &mut self.data)?;
         create_framebuffers(&self.device, &mut self.data)?;
         create_command_buffers(&self.device, &mut self.data)?;
-        self.data.images_in_flight.resize(self.data.swapchain_images.len(), vk::Fence::null());
+        self.data
+            .images_in_flight
+            .resize(self.data.swapchain_images.len(), vk::Fence::null());
         Ok(())
     }
 
     /// Destroys our Vulkan app.
-    #[rustfmt::skip]
     unsafe fn destroy(&mut self) {
         self.device.device_wait_idle().unwrap();
 
         self.destroy_swapchain();
 
-        self.data.in_flight_fences.iter().for_each(|f| self.device.destroy_fence(*f, None));
-        self.data.render_finished_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
-        self.data.image_available_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
-        self.device.destroy_command_pool(self.data.command_pool, None);
+        self.data
+            .in_flight_fences
+            .iter()
+            .for_each(|f| self.device.destroy_fence(*f, None));
+        self.data
+            .render_finished_semaphores
+            .iter()
+            .for_each(|s| self.device.destroy_semaphore(*s, None));
+        self.data
+            .image_available_semaphores
+            .iter()
+            .for_each(|s| self.device.destroy_semaphore(*s, None));
+        self.device
+            .destroy_command_pool(self.data.command_pool, None);
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.data.surface, None);
 
         if VALIDATION_ENABLED {
-            self.instance.destroy_debug_utils_messenger_ext(self.data.messenger, None);
+            self.instance
+                .destroy_debug_utils_messenger_ext(self.data.messenger, None);
         }
 
         self.instance.destroy_instance(None);
     }
 
     /// Destroys the parts of our Vulkan app related to the swapchain.
-    #[rustfmt::skip]
     unsafe fn destroy_swapchain(&mut self) {
-        self.device.free_command_buffers(self.data.command_pool, &self.data.command_buffers);
-        self.data.framebuffers.iter().for_each(|f| self.device.destroy_framebuffer(*f, None));
+        self.device
+            .free_command_buffers(self.data.command_pool, &self.data.command_buffers);
+        self.data
+            .framebuffers
+            .iter()
+            .for_each(|f| self.device.destroy_framebuffer(*f, None));
         self.device.destroy_pipeline(self.data.pipeline, None);
-        self.device.destroy_pipeline_layout(self.data.pipeline_layout, None);
+        self.device
+            .destroy_pipeline_layout(self.data.pipeline_layout, None);
         self.device.destroy_render_pass(self.data.render_pass, None);
-        self.data.swapchain_image_views.iter().for_each(|v| self.device.destroy_image_view(*v, None));
+        self.data
+            .swapchain_image_views
+            .iter()
+            .for_each(|v| self.device.destroy_image_view(*v, None));
         self.device.destroy_swapchain_khr(self.data.swapchain, None);
     }
 }
@@ -605,7 +624,6 @@ fn get_swapchain_present_mode(present_modes: &[vk::PresentModeKHR]) -> vk::Prese
         .unwrap_or(vk::PresentModeKHR::FIFO)
 }
 
-#[rustfmt::skip]
 fn get_swapchain_extent(window: &Window, capabilities: vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
     if capabilities.current_extent.width != u32::MAX {
         capabilities.current_extent
