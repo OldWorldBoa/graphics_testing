@@ -12,7 +12,6 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 4. Done - FAQ
 
 ### Chapter 1: Setup
-
 5. Done - Base Code
 6. Done - Instance
 7. Done - Validation Layers
@@ -20,15 +19,32 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 9. Done - Logical device and queues
 
 ### Chapter 2: Presentation
-
 10. Done - Window Surface
 11. Done - Swapchain
 12. Done - Image views
 
 ### Chapter 3: Pipeline
+13. Done - Intro
+14. Done - Shader Modules
+15. Done - Fixed Functions
+16. Done - Render Passes
+17. Done - Conclusion
 
-13. Curr - Intro
-14. Shader Modules
-15. Fixed Functions
-16. Render Passes
-17. Conclusion
+### Chapter 4: Drawing
+18. Done - Framebuffers
+19. Done - Command buffers
+20. Done - Rendering and presentation
+
+### Chapter 5: Swapchain
+21. Done - Recreation
+
+### Chapter 6: Vertex Buffers
+22. Vertex input description
+23. Vertex buffer creation
+24. Staging buffer
+25. Index buffer
+
+### Chapter 7: Uniform buffers
+26. Descriptor set layout and buffer
+27. Descriptor pool and sets
+
