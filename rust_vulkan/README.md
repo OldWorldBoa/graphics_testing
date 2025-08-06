@@ -39,7 +39,7 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 21. Done - Recreation
 
 ### Chapter 6: Vertex Buffers
-22. Vertex input description
+22. Done - Vertex input description
 23. Vertex buffer creation
 24. Staging buffer
 25. Index buffer
