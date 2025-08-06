@@ -8,14 +8,14 @@
     unsafe_op_in_unsafe_fn
 )]
 
-use std::collections::HashSet;
-use std::ffi::CStr;
-use std::os::raw::c_void;
-
 use anyhow::{anyhow, Result};
 use cgmath::{vec2, vec3};
 use log::*;
+use std::collections::HashSet;
+use std::ffi::CStr;
 use std::mem::size_of;
+use std::os::raw::c_void;
+use std::ptr::copy_nonoverlapping as memcpy;
 use thiserror::Error;
 use vulkanalia::bytecode::Bytecode;
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
@@ -272,6 +272,8 @@ impl App {
         self.destroy_swapchain();
 
         self.device.destroy_buffer(self.data.vertex_buffer, None);
+        self.device
+            .free_memory(self.data.vertex_buffer_memory, None);
 
         self.data
             .in_flight_fences
@@ -352,6 +354,7 @@ struct AppData {
     images_in_flight: Vec<vk::Fence>,
     // Vertex
     vertex_buffer: vk::Buffer,
+    vertex_buffer_memory: vk::DeviceMemory,
 }
 
 //================================================
@@ -994,7 +997,8 @@ unsafe fn create_command_buffers(device: &Device, data: &mut AppData) -> Result<
             vk::PipelineBindPoint::GRAPHICS,
             data.pipeline,
         );
-        device.cmd_draw(*command_buffer, 3, 1, 0, 0);
+        device.cmd_bind_vertex_buffers(*command_buffer, 0, &[data.vertex_buffer], &[0]);
+        device.cmd_draw(*command_buffer, VERTICES.len() as u32, 1, 0, 0);
         device.cmd_end_render_pass(*command_buffer);
 
         device.end_command_buffer(*command_buffer)?;
@@ -1004,21 +1008,60 @@ unsafe fn create_command_buffers(device: &Device, data: &mut AppData) -> Result<
 }
 
 //================================================
-// Vertex Helpers
+// Buffers
 //================================================
+
+unsafe fn create_buffer(
+    instance: &Instance,
+    device: &Device,
+    data: &AppData,
+    size: vk::DeviceSize,
+    usage: vk::BufferUsageFlags,
+    properties: vk::MemoryPropertyFlags,
+) -> Result<(vk::Buffer, vk::DeviceMemory)> {
+    let buffer_info = vk::BufferCreateInfo::builder()
+        .size(size)
+        .usage(usage)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE);
+    let buffer = device.create_buffer(&buffer_info, None)?;
+
+    let requirements = device.get_buffer_memory_requirements(buffer);
+    let memory_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(requirements.size)
+        .memory_type_index(get_memory_type_index(
+            instance,
+            data,
+            properties,
+            requirements,
+        )?);
+    let buffer_memory = device.allocate_memory(&memory_info, None)?;
+    device.bind_buffer_memory(buffer, buffer_memory, 0)?;
+
+    Ok((buffer, buffer_memory))
+}
 
 unsafe fn create_vertex_buffer(
     instance: &Instance,
     device: &Device,
     data: &mut AppData,
 ) -> Result<()> {
-    let buffer_info = vk::BufferCreateInfo::builder()
-        .size((size_of::<Vertex>() * VERTICES.len()) as u64)
-        .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .flags(vk::BufferCreateFlags::empty());
+    let size = (size_of::<Vertex>() * VERTICES.len()) as u64;
+    let (vertex_buffer, vertex_buffer_memory) = create_buffer(
+        instance,
+        device,
+        data,
+        size,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
+        vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
+    )?;
 
-    data.vertex_buffer = device.create_buffer(&buffer_info, None)?;
+    data.vertex_buffer = vertex_buffer;
+    data.vertex_buffer_memory = vertex_buffer_memory;
+
+    let memory = device.map_memory(vertex_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
+
+    memcpy(VERTICES.as_ptr(), memory.cast(), VERTICES.len());
+    device.unmap_memory(vertex_buffer_memory);
 
     Ok(())
 }
