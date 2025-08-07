@@ -4,6 +4,8 @@ This is a graphics program implemented with Rust and Vulkan
 
 ## Tutorial Progress
 
+Add ``` unsafe_op_in_unsafe_fn ``` to the allows to get rid of the errors
+
 The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanalia)
 
 1. Done - Intro
@@ -40,9 +42,9 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 
 ### Chapter 6: Vertex Buffers
 22. Done - Vertex input description
-23. Vertex buffer creation
-24. Staging buffer
-25. Index buffer
+23. Done - Vertex buffer creation
+24. Done - Staging buffer
+25. Done - Index buffer
 
 ### Chapter 7: Uniform buffers
 26. Descriptor set layout and buffer
