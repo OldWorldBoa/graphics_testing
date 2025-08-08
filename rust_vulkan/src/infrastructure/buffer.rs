@@ -1,16 +1,17 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::mem::size_of;
 use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::prelude::v1_0::*;
 
 use crate::infrastructure::app::AppData;
-use crate::infrastructure::vertex::Vertex;
+use crate::infrastructure::constants::{INDICES, VERTICES};
+use crate::infrastructure::geometry::Vertex;
 
 //================================================
 // Buffers
 //================================================
 
-unsafe fn create_vertex_buffer(
+pub unsafe fn create_vertex_buffer(
     instance: &Instance,
     device: &Device,
     data: &mut AppData,
@@ -62,7 +63,7 @@ unsafe fn create_vertex_buffer(
     Ok(())
 }
 
-unsafe fn create_index_buffer(
+pub unsafe fn create_index_buffer(
     instance: &Instance,
     device: &Device,
     data: &mut AppData,

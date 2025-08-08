@@ -8,6 +8,7 @@
 )]
 
 use anyhow::{anyhow, Result};
+use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
 use vulkanalia::vk::ExtDebugUtilsExtension;
@@ -15,6 +16,16 @@ use vulkanalia::vk::KhrSurfaceExtension;
 use vulkanalia::vk::KhrSwapchainExtension;
 use vulkanalia::window as vk_window;
 use winit::window::Window;
+
+use crate::infrastructure::buffer::{create_index_buffer, create_vertex_buffer};
+use crate::infrastructure::commands::{create_command_buffers, create_command_pool};
+use crate::infrastructure::constants::{MAX_FRAMES_IN_FLIGHT, VALIDATION_ENABLED};
+use crate::infrastructure::framebuffer::create_framebuffers;
+use crate::infrastructure::instance::create_instance;
+use crate::infrastructure::logical_device::create_logical_device;
+use crate::infrastructure::physical_device::pick_physical_device;
+use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
+use crate::infrastructure::swapchain::{create_swapchain, create_swapchain_image_views};
 
 /// Our Vulkan app.
 #[derive(Clone, Debug)]
@@ -29,7 +40,7 @@ pub struct App {
 
 impl App {
     /// Creates our Vulkan app.
-    unsafe fn create(window: &Window) -> Result<Self> {
+    pub unsafe fn create(window: &Window) -> Result<Self> {
         let loader = LibloadingLoader::new(LIBRARY)?;
         let entry = Entry::new(loader).map_err(|b| anyhow!("{}", b))?;
         let mut data = AppData::default();
@@ -58,7 +69,7 @@ impl App {
     }
 
     /// Renders a frame for our Vulkan app.
-    unsafe fn render(&mut self, window: &Window) -> Result<()> {
+    pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
         let in_flight_fence = self.data.in_flight_fences[self.frame];
 
         self.device
@@ -141,7 +152,7 @@ impl App {
 
     /// Destroys our Vulkan app.
     #[rustfmt::skip]
-    unsafe fn destroy(&mut self) {
+    pub unsafe fn destroy(&mut self) {
         self.device.device_wait_idle().unwrap();
 
         self.destroy_swapchain();
@@ -214,4 +225,27 @@ pub struct AppData {
     pub render_finished_semaphores: Vec<vk::Semaphore>,
     pub in_flight_fences: Vec<vk::Fence>,
     pub images_in_flight: Vec<vk::Fence>,
+}
+
+unsafe fn create_sync_objects(device: &Device, data: &mut AppData) -> Result<()> {
+    let semaphore_info = vk::SemaphoreCreateInfo::builder();
+    let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+
+    for _ in 0..MAX_FRAMES_IN_FLIGHT {
+        data.image_available_semaphores
+            .push(device.create_semaphore(&semaphore_info, None)?);
+        data.render_finished_semaphores
+            .push(device.create_semaphore(&semaphore_info, None)?);
+
+        data.in_flight_fences
+            .push(device.create_fence(&fence_info, None)?);
+    }
+
+    data.images_in_flight = data
+        .swapchain_images
+        .iter()
+        .map(|_| vk::Fence::null())
+        .collect();
+
+    Ok(())
 }

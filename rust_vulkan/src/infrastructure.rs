@@ -1,11 +1,13 @@
 pub mod app;
 pub mod buffer;
 pub mod commands;
+pub mod constants;
+pub mod error;
 pub mod framebuffer;
+pub mod geometry;
 pub mod instance;
 pub mod logical_device;
 pub mod physical_device;
 pub mod pipeline;
 pub mod queue_family_indices;
 pub mod swapchain;
-pub mod vertex;

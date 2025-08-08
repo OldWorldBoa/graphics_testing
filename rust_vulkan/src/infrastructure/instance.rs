@@ -1,25 +1,17 @@
 use anyhow::{anyhow, Result};
-use cgmath::{vec2, vec3};
 use log::*;
 use std::collections::HashSet;
 use std::ffi::CStr;
-use std::mem::size_of;
 use std::os::raw::c_void;
-use std::ptr::copy_nonoverlapping as memcpy;
-use thiserror::Error;
-use vulkanalia::bytecode::Bytecode;
-use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::ExtDebugUtilsExtension;
-use vulkanalia::vk::KhrSurfaceExtension;
-use vulkanalia::vk::KhrSwapchainExtension;
 use vulkanalia::window as vk_window;
-use vulkanalia::Version;
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
-use winit::window::{Window, WindowBuilder};
+use winit::window::Window;
+
+use crate::infrastructure::app::AppData;
+use crate::infrastructure::constants::{
+    PORTABILITY_MACOS_VERSION, VALIDATION_ENABLED, VALIDATION_LAYER,
+};
 
 //================================================
 // Instance
@@ -111,4 +103,26 @@ pub unsafe fn create_instance(
     }
 
     Ok(instance)
+}
+
+extern "system" fn debug_callback(
+    severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    type_: vk::DebugUtilsMessageTypeFlagsEXT,
+    data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _: *mut c_void,
+) -> vk::Bool32 {
+    let data = unsafe { *data };
+    let message = unsafe { CStr::from_ptr(data.message) }.to_string_lossy();
+
+    if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+        error!("({:?}) {}", type_, message);
+    } else if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
+        warn!("({:?}) {}", type_, message);
+    } else if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
+        debug!("({:?}) {}", type_, message);
+    } else {
+        trace!("({:?}) {}", type_, message);
+    }
+
+    vk::FALSE
 }

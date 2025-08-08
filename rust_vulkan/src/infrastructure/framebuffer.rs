@@ -1,6 +1,7 @@
 use anyhow::Result;
+use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
-use vulkanalia::vk::Device;
+use vulkanalia::Device;
 
 use crate::infrastructure::app::AppData;
 
@@ -8,7 +9,7 @@ use crate::infrastructure::app::AppData;
 // Framebuffers
 //================================================
 
-unsafe fn create_framebuffers(device: &Device, data: &mut AppData) -> Result<()> {
+pub unsafe fn create_framebuffers(device: &Device, data: &mut AppData) -> Result<()> {
     data.framebuffers = data
         .swapchain_image_views
         .iter()

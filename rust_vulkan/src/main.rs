@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 #![allow(
     dead_code,
     unused_variables,
@@ -9,55 +7,14 @@
     unsafe_op_in_unsafe_fn
 )]
 
-use anyhow::{anyhow, Result};
-use cgmath::{vec2, vec3};
-use log::*;
-use std::collections::HashSet;
-use std::ffi::CStr;
-use std::mem::size_of;
-use std::os::raw::c_void;
-use std::ptr::copy_nonoverlapping as memcpy;
-use thiserror::Error;
-use vulkanalia::bytecode::Bytecode;
-use vulkanalia::loader::{LibloadingLoader, LIBRARY};
-use vulkanalia::prelude::v1_0::*;
-use vulkanalia::vk::ExtDebugUtilsExtension;
-use vulkanalia::vk::KhrSurfaceExtension;
-use vulkanalia::vk::KhrSwapchainExtension;
-use vulkanalia::window as vk_window;
-use vulkanalia::Version;
+use anyhow::Result;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
+use winit::window::WindowBuilder;
 
 pub mod infrastructure;
-use infrastructure::app::AppData;
-use infrastructure::instance::create_instance;
-use infrastructure::vertex::Vertex;
-
-/// Whether the validation layers should be enabled.
-const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
-/// The name of the validation layers.
-const VALIDATION_LAYER: vk::ExtensionName =
-    vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
-
-/// The required device extensions.
-const DEVICE_EXTENSIONS: &[vk::ExtensionName] = &[vk::KHR_SWAPCHAIN_EXTENSION.name];
-/// The Vulkan SDK version that started requiring the portability subset extension for macOS.
-const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
-
-/// The maximum number of frames that can be processed concurrently.
-const MAX_FRAMES_IN_FLIGHT: usize = 2;
-#[rustfmt::skip]
-static VERTICES: [Vertex; 4] = [
-    Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0)),
-    Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0)),
-    Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0)),
-    Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0)),
-];
-
-const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+use infrastructure::app::App;
 
 #[rustfmt::skip]
 fn main() -> Result<()> {
@@ -103,53 +60,6 @@ fn main() -> Result<()> {
             _ => {}
         }
     })?;
-
-    Ok(())
-}
-extern "system" fn debug_callback(
-    severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    type_: vk::DebugUtilsMessageTypeFlagsEXT,
-    data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _: *mut c_void,
-) -> vk::Bool32 {
-    let data = unsafe { *data };
-    let message = unsafe { CStr::from_ptr(data.message) }.to_string_lossy();
-
-    if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
-        error!("({:?}) {}", type_, message);
-    } else if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
-        warn!("({:?}) {}", type_, message);
-    } else if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
-        debug!("({:?}) {}", type_, message);
-    } else {
-        trace!("({:?}) {}", type_, message);
-    }
-
-    vk::FALSE
-}
-//================================================
-// Sync Objects
-//================================================
-
-unsafe fn create_sync_objects(device: &Device, data: &mut AppData) -> Result<()> {
-    let semaphore_info = vk::SemaphoreCreateInfo::builder();
-    let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-
-    for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        data.image_available_semaphores
-            .push(device.create_semaphore(&semaphore_info, None)?);
-        data.render_finished_semaphores
-            .push(device.create_semaphore(&semaphore_info, None)?);
-
-        data.in_flight_fences
-            .push(device.create_fence(&fence_info, None)?);
-    }
-
-    data.images_in_flight = data
-        .swapchain_images
-        .iter()
-        .map(|_| vk::Fence::null())
-        .collect();
 
     Ok(())
 }

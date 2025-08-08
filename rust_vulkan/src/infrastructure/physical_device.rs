@@ -1,34 +1,19 @@
 use anyhow::{anyhow, Result};
-use cgmath::{vec2, vec3};
 use log::*;
 use std::collections::HashSet;
-use std::ffi::CStr;
-use std::mem::size_of;
-use std::os::raw::c_void;
-use std::ptr::copy_nonoverlapping as memcpy;
-use thiserror::Error;
-use vulkanalia::bytecode::Bytecode;
-use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
-use vulkanalia::vk::ExtDebugUtilsExtension;
-use vulkanalia::vk::KhrSurfaceExtension;
-use vulkanalia::vk::KhrSwapchainExtension;
-use vulkanalia::window as vk_window;
-use vulkanalia::Version;
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
+
+use crate::infrastructure::app::AppData;
+use crate::infrastructure::constants::DEVICE_EXTENSIONS;
+use crate::infrastructure::error::SuitabilityError;
+use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
+use crate::infrastructure::swapchain::SwapchainSupport;
 
 //================================================
 // Physical Device
 //================================================
 
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct SuitabilityError(pub &'static str);
-
-unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Result<()> {
+pub unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Result<()> {
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
 

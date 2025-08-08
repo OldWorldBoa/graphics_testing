@@ -1,12 +1,14 @@
-use crate::infrastructure::app::AppData;
-use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 use anyhow::Result;
 use vulkanalia::prelude::v1_0::*;
+
+use crate::infrastructure::app::AppData;
+use crate::infrastructure::constants::INDICES;
+use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 
 //================================================
 // Command Pool
 //================================================
-unsafe fn create_command_pool(
+pub unsafe fn create_command_pool(
     instance: &Instance,
     device: &Device,
     data: &mut AppData,
@@ -24,7 +26,7 @@ unsafe fn create_command_pool(
 // Command Buffers
 //================================================
 
-unsafe fn create_command_buffers(device: &Device, data: &mut AppData) -> Result<()> {
+pub unsafe fn create_command_buffers(device: &Device, data: &mut AppData) -> Result<()> {
     // Allocate
 
     let allocate_info = vk::CommandBufferAllocateInfo::builder()

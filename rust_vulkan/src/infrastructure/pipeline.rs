@@ -1,30 +1,15 @@
-use anyhow::{anyhow, Result};
-use cgmath::{vec2, vec3};
-use log::*;
-use std::collections::HashSet;
-use std::ffi::CStr;
-use std::mem::size_of;
-use std::os::raw::c_void;
-use std::ptr::copy_nonoverlapping as memcpy;
-use thiserror::Error;
+use anyhow::Result;
 use vulkanalia::bytecode::Bytecode;
-use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
-use vulkanalia::vk::ExtDebugUtilsExtension;
-use vulkanalia::vk::KhrSurfaceExtension;
-use vulkanalia::vk::KhrSwapchainExtension;
-use vulkanalia::window as vk_window;
-use vulkanalia::Version;
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
+
+use crate::infrastructure::app::AppData;
+use crate::infrastructure::geometry::Vertex;
 
 //================================================
 // Pipeline
 //================================================
 
-unsafe fn create_render_pass(
+pub unsafe fn create_render_pass(
     instance: &Instance,
     device: &Device,
     data: &mut AppData,
@@ -77,11 +62,11 @@ unsafe fn create_render_pass(
     Ok(())
 }
 
-unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()> {
+pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()> {
     // Stages
 
-    let vert = include_bytes!("../shaders/vert.spv");
-    let frag = include_bytes!("../shaders/frag.spv");
+    let vert = include_bytes!("../../shaders/vert.spv");
+    let frag = include_bytes!("../../shaders/frag.spv");
 
     let vert_shader_module = create_shader_module(device, &vert[..])?;
     let frag_shader_module = create_shader_module(device, &frag[..])?;

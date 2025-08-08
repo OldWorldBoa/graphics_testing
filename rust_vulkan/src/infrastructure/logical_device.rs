@@ -1,30 +1,18 @@
-use anyhow::{anyhow, Result};
-use cgmath::{vec2, vec3};
-use log::*;
+use anyhow::Result;
 use std::collections::HashSet;
-use std::ffi::CStr;
-use std::mem::size_of;
-use std::os::raw::c_void;
-use std::ptr::copy_nonoverlapping as memcpy;
-use thiserror::Error;
-use vulkanalia::bytecode::Bytecode;
-use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
-use vulkanalia::vk::ExtDebugUtilsExtension;
-use vulkanalia::vk::KhrSurfaceExtension;
-use vulkanalia::vk::KhrSwapchainExtension;
-use vulkanalia::window as vk_window;
-use vulkanalia::Version;
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
+
+use crate::infrastructure::app::AppData;
+use crate::infrastructure::constants::{
+    DEVICE_EXTENSIONS, PORTABILITY_MACOS_VERSION, VALIDATION_ENABLED, VALIDATION_LAYER,
+};
+use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 
 //================================================
 // Logical Device
 //================================================
 
-unsafe fn create_logical_device(
+pub unsafe fn create_logical_device(
     entry: &Entry,
     instance: &Instance,
     data: &mut AppData,
