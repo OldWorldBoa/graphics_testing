@@ -25,7 +25,7 @@ use crate::infrastructure::instance::create_instance;
 use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::pick_physical_device;
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
-use crate::infrastructure::swapchain::{create_swapchain, create_swapchain_image_views};
+use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
 
 /// Our Vulkan app.
 #[derive(Clone, Debug)]
@@ -46,18 +46,67 @@ impl App {
         let mut data = AppData::default();
         let instance = create_instance(window, &entry, &mut data)?;
         data.surface = vk_window::create_surface(&instance, &window, &window)?;
-        pick_physical_device(&instance, &mut data)?;
+        data.physical_device = pick_physical_device(&instance, data.surface)?;
         let device = create_logical_device(&entry, &instance, &mut data)?;
-        create_swapchain(window, &instance, &device, &mut data)?;
-        create_swapchain_image_views(&device, &mut data)?;
-        create_render_pass(&instance, &device, &mut data)?;
-        create_pipeline(&device, &mut data)?;
-        create_framebuffers(&device, &mut data)?;
-        create_command_pool(&instance, &device, &mut data)?;
-        create_vertex_buffer(&instance, &device, &mut data)?;
-        create_index_buffer(&instance, &device, &mut data)?;
-        create_command_buffers(&device, &mut data)?;
+        data.swapchain_info = create_swapchain(
+            window,
+            &instance,
+            &device,
+            data.surface,
+            data.physical_device,
+        )?;
+        data.render_pass =
+            create_render_pass(&instance, &device, data.swapchain_info.swapchain_format)?;
+
+        let (pipeline_layout, pipeline) = create_pipeline(
+            &device,
+            data.render_pass,
+            data.swapchain_info.swapchain_extent,
+        )?;
+        data.pipeline_layout = pipeline_layout;
+        data.pipeline = pipeline;
+        data.framebuffers = create_framebuffers(
+            &device,
+            data.render_pass,
+            &data.swapchain_info.swapchain_image_views,
+            data.swapchain_info.swapchain_extent.height,
+            data.swapchain_info.swapchain_extent.width,
+        )?;
+        data.command_pool =
+            create_command_pool(&instance, &device, data.surface, data.physical_device)?;
+
+        let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
+            &instance,
+            &device,
+            data.command_pool,
+            data.graphics_queue,
+            data.physical_device,
+        )?;
+        data.vertex_buffer = vertex_buffer;
+        data.vertex_buffer_memory = vertex_buffer_memory;
+
+        let (index_buffer, index_buffer_memory) = create_index_buffer(
+            &instance,
+            &device,
+            data.command_pool,
+            data.graphics_queue,
+            data.physical_device,
+        )?;
+        data.index_buffer = index_buffer;
+        data.index_buffer_memory = index_buffer_memory;
+
+        data.command_buffers = create_command_buffers(
+            &device,
+            data.command_pool,
+            &data.framebuffers,
+            data.render_pass,
+            data.pipeline,
+            data.vertex_buffer,
+            data.index_buffer,
+            data.swapchain_info.swapchain_extent,
+        )?;
         create_sync_objects(&device, &mut data)?;
+
         Ok(Self {
             entry,
             instance,
@@ -76,7 +125,7 @@ impl App {
             .wait_for_fences(&[in_flight_fence], true, u64::MAX)?;
 
         let result = self.device.acquire_next_image_khr(
-            self.data.swapchain,
+            self.data.swapchain_info.swapchain,
             u64::MAX,
             self.data.image_available_semaphores[self.frame],
             vk::Fence::null(),
@@ -111,7 +160,7 @@ impl App {
         self.device
             .queue_submit(self.data.graphics_queue, &[submit_info], in_flight_fence)?;
 
-        let swapchains = &[self.data.swapchain];
+        let swapchains = &[self.data.swapchain_info.swapchain];
         let image_indices = &[image_index as u32];
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(signal_semaphores)
@@ -136,17 +185,48 @@ impl App {
     }
 
     /// Recreates the swapchain for our Vulkan app.
-    #[rustfmt::skip]
     unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
         self.device.device_wait_idle()?;
         self.destroy_swapchain();
-        create_swapchain(window, &self.instance, &self.device, &mut self.data)?;
-        create_swapchain_image_views(&self.device, &mut self.data)?;
-        create_render_pass(&self.instance, &self.device, &mut self.data)?;
-        create_pipeline(&self.device, &mut self.data)?;
-        create_framebuffers(&self.device, &mut self.data)?;
-        create_command_buffers(&self.device, &mut self.data)?;
-        self.data.images_in_flight.resize(self.data.swapchain_images.len(), vk::Fence::null());
+        self.data.swapchain_info = create_swapchain(
+            window,
+            &self.instance,
+            &self.device,
+            self.data.surface,
+            self.data.physical_device,
+        )?;
+        self.data.render_pass = create_render_pass(
+            &self.instance,
+            &self.device,
+            self.data.swapchain_info.swapchain_format,
+        )?;
+        let (pipeline_layout, pipeline) = create_pipeline(
+            &self.device,
+            self.data.render_pass,
+            self.data.swapchain_info.swapchain_extent,
+        )?;
+        self.data.framebuffers = create_framebuffers(
+            &self.device,
+            self.data.render_pass,
+            &self.data.swapchain_info.swapchain_image_views,
+            self.data.swapchain_info.swapchain_extent.height,
+            self.data.swapchain_info.swapchain_extent.width,
+        )?;
+        self.data.command_buffers = create_command_buffers(
+            &self.device,
+            self.data.command_pool,
+            &self.data.framebuffers,
+            self.data.render_pass,
+            self.data.pipeline,
+            self.data.vertex_buffer,
+            self.data.index_buffer,
+            self.data.swapchain_info.swapchain_extent,
+        )?;
+        self.data.images_in_flight.resize(
+            self.data.swapchain_info.swapchain_images.len(),
+            vk::Fence::null(),
+        );
+
         Ok(())
     }
 
@@ -183,8 +263,8 @@ impl App {
         self.device.destroy_pipeline(self.data.pipeline, None);
         self.device.destroy_pipeline_layout(self.data.pipeline_layout, None);
         self.device.destroy_render_pass(self.data.render_pass, None);
-        self.data.swapchain_image_views.iter().for_each(|v| self.device.destroy_image_view(*v, None));
-        self.device.destroy_swapchain_khr(self.data.swapchain, None);
+        self.data.swapchain_info.swapchain_image_views.iter().for_each(|v| self.device.destroy_image_view(*v, None));
+        self.device.destroy_swapchain_khr(self.data.swapchain_info.swapchain, None);
     }
 }
 
@@ -200,11 +280,7 @@ pub struct AppData {
     pub graphics_queue: vk::Queue,
     pub present_queue: vk::Queue,
     // Swapchain
-    pub swapchain_format: vk::Format,
-    pub swapchain_extent: vk::Extent2D,
-    pub swapchain: vk::SwapchainKHR,
-    pub swapchain_images: Vec<vk::Image>,
-    pub swapchain_image_views: Vec<vk::ImageView>,
+    pub swapchain_info: SwapchainInfo,
     // Pipeline
     pub render_pass: vk::RenderPass,
     pub pipeline_layout: vk::PipelineLayout,
@@ -242,6 +318,7 @@ unsafe fn create_sync_objects(device: &Device, data: &mut AppData) -> Result<()>
     }
 
     data.images_in_flight = data
+        .swapchain_info
         .swapchain_images
         .iter()
         .map(|_| vk::Fence::null())

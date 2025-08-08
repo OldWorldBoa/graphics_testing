@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use log::*;
 use std::collections::HashSet;
 use vulkanalia::prelude::v1_0::*;
+use vulkanalia::vk::{PhysicalDevice, SurfaceKHR};
 
 use crate::infrastructure::app::AppData;
 use crate::infrastructure::constants::DEVICE_EXTENSIONS;
@@ -13,19 +14,21 @@ use crate::infrastructure::swapchain::SwapchainSupport;
 // Physical Device
 //================================================
 
-pub unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Result<()> {
+pub unsafe fn pick_physical_device(
+    instance: &Instance,
+    surface: SurfaceKHR,
+) -> Result<PhysicalDevice> {
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
 
-        if let Err(error) = check_physical_device(instance, data, physical_device) {
+        if let Err(error) = check_physical_device(instance, surface, physical_device) {
             warn!(
                 "Skipping physical device (`{}`): {}",
                 properties.device_name, error
             );
         } else {
             info!("Selected physical device (`{}`).", properties.device_name);
-            data.physical_device = physical_device;
-            return Ok(());
+            return Ok(physical_device);
         }
     }
 
@@ -34,13 +37,13 @@ pub unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> R
 
 unsafe fn check_physical_device(
     instance: &Instance,
-    data: &AppData,
+    surface: SurfaceKHR,
     physical_device: vk::PhysicalDevice,
 ) -> Result<()> {
-    QueueFamilyIndices::get(instance, data, physical_device)?;
+    QueueFamilyIndices::get(instance, surface, physical_device)?;
     check_physical_device_extensions(instance, physical_device)?;
 
-    let support = SwapchainSupport::get(instance, data, physical_device)?;
+    let support = SwapchainSupport::get(instance, surface, physical_device)?;
     if support.formats.is_empty() || support.present_modes.is_empty() {
         return Err(anyhow!(SuitabilityError("Insufficient swapchain support.")));
     }

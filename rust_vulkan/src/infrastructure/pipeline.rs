@@ -2,7 +2,6 @@ use anyhow::Result;
 use vulkanalia::bytecode::Bytecode;
 use vulkanalia::prelude::v1_0::*;
 
-use crate::infrastructure::app::AppData;
 use crate::infrastructure::geometry::Vertex;
 
 //================================================
@@ -12,12 +11,11 @@ use crate::infrastructure::geometry::Vertex;
 pub unsafe fn create_render_pass(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
-) -> Result<()> {
+    swapchain_format: vk::Format,
+) -> Result<vk::RenderPass> {
     // Attachments
-
     let color_attachment = vk::AttachmentDescription::builder()
-        .format(data.swapchain_format)
+        .format(swapchain_format)
         .samples(vk::SampleCountFlags::_1)
         .load_op(vk::AttachmentLoadOp::CLEAR)
         .store_op(vk::AttachmentStoreOp::STORE)
@@ -27,7 +25,6 @@ pub unsafe fn create_render_pass(
         .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
 
     // Subpasses
-
     let color_attachment_ref = vk::AttachmentReference::builder()
         .attachment(0)
         .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
@@ -38,7 +35,6 @@ pub unsafe fn create_render_pass(
         .color_attachments(color_attachments);
 
     // Dependencies
-
     let dependency = vk::SubpassDependency::builder()
         .src_subpass(vk::SUBPASS_EXTERNAL)
         .dst_subpass(0)
@@ -48,7 +44,6 @@ pub unsafe fn create_render_pass(
         .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
 
     // Create
-
     let attachments = &[color_attachment];
     let subpasses = &[subpass];
     let dependencies = &[dependency];
@@ -57,14 +52,15 @@ pub unsafe fn create_render_pass(
         .subpasses(subpasses)
         .dependencies(dependencies);
 
-    data.render_pass = device.create_render_pass(&info, None)?;
-
-    Ok(())
+    Ok(device.create_render_pass(&info, None)?)
 }
 
-pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()> {
+pub unsafe fn create_pipeline(
+    device: &Device,
+    render_pass: vk::RenderPass,
+    extent: vk::Extent2D,
+) -> Result<(vk::PipelineLayout, vk::Pipeline)> {
     // Stages
-
     let vert = include_bytes!("../../shaders/vert.spv");
     let frag = include_bytes!("../../shaders/frag.spv");
 
@@ -82,7 +78,6 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
         .name(b"main\0");
 
     // Vertex Input State
-
     let binding_descriptions = &[Vertex::binding_description()];
     let attribute_descriptions = Vertex::attribute_descriptions();
     let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
@@ -90,24 +85,22 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
         .vertex_attribute_descriptions(&attribute_descriptions);
 
     // Input Assembly State
-
     let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
         .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
         .primitive_restart_enable(false);
 
     // Viewport State
-
     let viewport = vk::Viewport::builder()
         .x(0.0)
         .y(0.0)
-        .width(data.swapchain_extent.width as f32)
-        .height(data.swapchain_extent.height as f32)
+        .width(extent.width as f32)
+        .height(extent.height as f32)
         .min_depth(0.0)
         .max_depth(1.0);
 
     let scissor = vk::Rect2D::builder()
         .offset(vk::Offset2D { x: 0, y: 0 })
-        .extent(data.swapchain_extent);
+        .extent(extent);
 
     let viewports = &[viewport];
     let scissors = &[scissor];
@@ -116,7 +109,6 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
         .scissors(scissors);
 
     // Rasterization State
-
     let rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
         .depth_clamp_enable(false)
         .rasterizer_discard_enable(false)
@@ -127,13 +119,11 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
         .depth_bias_enable(false);
 
     // Multisample State
-
     let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
         .sample_shading_enable(false)
         .rasterization_samples(vk::SampleCountFlags::_1);
 
     // Color Blend State
-
     let attachment = vk::PipelineColorBlendAttachmentState::builder()
         .color_write_mask(vk::ColorComponentFlags::all())
         .blend_enable(false);
@@ -146,13 +136,10 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
         .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
     // Layout
-
     let layout_info = vk::PipelineLayoutCreateInfo::builder();
-
-    data.pipeline_layout = device.create_pipeline_layout(&layout_info, None)?;
+    let pipeline_layout = device.create_pipeline_layout(&layout_info, None)?;
 
     // Create
-
     let stages = &[vert_stage, frag_stage];
     let info = vk::GraphicsPipelineCreateInfo::builder()
         .stages(stages)
@@ -162,20 +149,19 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
         .rasterization_state(&rasterization_state)
         .multisample_state(&multisample_state)
         .color_blend_state(&color_blend_state)
-        .layout(data.pipeline_layout)
-        .render_pass(data.render_pass)
+        .layout(pipeline_layout)
+        .render_pass(render_pass)
         .subpass(0);
 
-    data.pipeline = device
+    let pipeline = device
         .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None)?
         .0[0];
 
     // Cleanup
-
     device.destroy_shader_module(vert_shader_module, None);
     device.destroy_shader_module(frag_shader_module, None);
 
-    Ok(())
+    Ok((pipeline_layout, pipeline))
 }
 
 unsafe fn create_shader_module(device: &Device, bytecode: &[u8]) -> Result<vk::ShaderModule> {

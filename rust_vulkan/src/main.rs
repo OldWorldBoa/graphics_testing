@@ -21,7 +21,6 @@ fn main() -> Result<()> {
     pretty_env_logger::init();
 
     // Window
-
     let event_loop = EventLoop::new()?;
     let window = WindowBuilder::new()
         .with_title("Vulkan Tutorial (Rust)")
@@ -29,7 +28,6 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     // App
-
     let mut app = unsafe { App::create(&window)? };
     let mut minimized = false;
     event_loop.run(move |event, elwt| {

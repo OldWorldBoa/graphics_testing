@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use std::mem::size_of;
 use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::prelude::v1_0::*;
+use vulkanalia::vk::{CommandPool, PhysicalDevice};
 
-use crate::infrastructure::app::AppData;
 use crate::infrastructure::constants::{INDICES, VERTICES};
 use crate::infrastructure::geometry::Vertex;
 
@@ -14,8 +14,10 @@ use crate::infrastructure::geometry::Vertex;
 pub unsafe fn create_vertex_buffer(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
-) -> Result<()> {
+    command_pool: CommandPool,
+    graphics_queue: vk::Queue,
+    physical_device: PhysicalDevice,
+) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
     let size = (size_of::<Vertex>() * VERTICES.len()) as u64;
@@ -23,7 +25,7 @@ pub unsafe fn create_vertex_buffer(
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
@@ -42,32 +44,37 @@ pub unsafe fn create_vertex_buffer(
     let (vertex_buffer, vertex_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.vertex_buffer = vertex_buffer;
-    data.vertex_buffer_memory = vertex_buffer_memory;
-
     // Copy (vertex)
-
-    copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
+    copy_buffer(
+        device,
+        command_pool,
+        graphics_queue,
+        staging_buffer,
+        vertex_buffer,
+        size,
+    )?;
 
     // Cleanup
 
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
 
-    Ok(())
+    Ok((vertex_buffer, vertex_buffer_memory))
 }
 
 pub unsafe fn create_index_buffer(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
-) -> Result<()> {
+    command_pool: CommandPool,
+    graphics_queue: vk::Queue,
+    physical_device: PhysicalDevice,
+) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
     let size = (size_of::<u16>() * INDICES.len()) as u64;
@@ -75,7 +82,7 @@ pub unsafe fn create_index_buffer(
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
@@ -94,25 +101,28 @@ pub unsafe fn create_index_buffer(
     let (index_buffer, index_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.index_buffer = index_buffer;
-    data.index_buffer_memory = index_buffer_memory;
-
     // Copy (index)
-
-    copy_buffer(device, data, staging_buffer, index_buffer, size)?;
+    copy_buffer(
+        device,
+        command_pool,
+        graphics_queue,
+        staging_buffer,
+        index_buffer,
+        size,
+    )?;
 
     // Cleanup
 
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
 
-    Ok(())
+    Ok((index_buffer, index_buffer_memory))
 }
 
 //================================================
@@ -122,7 +132,7 @@ pub unsafe fn create_index_buffer(
 unsafe fn create_buffer(
     instance: &Instance,
     device: &Device,
-    data: &AppData,
+    physical_device: PhysicalDevice,
     size: vk::DeviceSize,
     usage: vk::BufferUsageFlags,
     properties: vk::MemoryPropertyFlags,
@@ -144,7 +154,7 @@ unsafe fn create_buffer(
         .allocation_size(requirements.size)
         .memory_type_index(get_memory_type_index(
             instance,
-            data,
+            physical_device,
             properties,
             requirements,
         )?);
@@ -158,22 +168,21 @@ unsafe fn create_buffer(
 
 unsafe fn copy_buffer(
     device: &Device,
-    data: &AppData,
+    command_pool: CommandPool,
+    graphics_queue: vk::Queue,
     source: vk::Buffer,
     destination: vk::Buffer,
     size: vk::DeviceSize,
 ) -> Result<()> {
     // Allocate
-
     let info = vk::CommandBufferAllocateInfo::builder()
         .level(vk::CommandBufferLevel::PRIMARY)
-        .command_pool(data.command_pool)
+        .command_pool(command_pool)
         .command_buffer_count(1);
 
     let command_buffer = device.allocate_command_buffers(&info)?[0];
 
     // Commands
-
     let info =
         vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -185,27 +194,25 @@ unsafe fn copy_buffer(
     device.end_command_buffer(command_buffer)?;
 
     // Submit
-
     let command_buffers = &[command_buffer];
     let info = vk::SubmitInfo::builder().command_buffers(command_buffers);
 
-    device.queue_submit(data.graphics_queue, &[info], vk::Fence::null())?;
-    device.queue_wait_idle(data.graphics_queue)?;
+    device.queue_submit(graphics_queue, &[info], vk::Fence::null())?;
+    device.queue_wait_idle(graphics_queue)?;
 
     // Cleanup
-
-    device.free_command_buffers(data.command_pool, &[command_buffer]);
+    device.free_command_buffers(command_pool, &[command_buffer]);
 
     Ok(())
 }
 
 unsafe fn get_memory_type_index(
     instance: &Instance,
-    data: &AppData,
+    physical_device: PhysicalDevice,
     properties: vk::MemoryPropertyFlags,
     requirements: vk::MemoryRequirements,
 ) -> Result<u32> {
-    let memory = instance.get_physical_device_memory_properties(data.physical_device);
+    let memory = instance.get_physical_device_memory_properties(physical_device);
     (0..memory.memory_type_count)
         .find(|i| {
             let suitable = (requirements.memory_type_bits & (1 << i)) != 0;

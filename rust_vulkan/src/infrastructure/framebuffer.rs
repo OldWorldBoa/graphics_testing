@@ -9,22 +9,25 @@ use crate::infrastructure::app::AppData;
 // Framebuffers
 //================================================
 
-pub unsafe fn create_framebuffers(device: &Device, data: &mut AppData) -> Result<()> {
-    data.framebuffers = data
-        .swapchain_image_views
+pub unsafe fn create_framebuffers(
+    device: &Device,
+    render_pass: vk::RenderPass,
+    image_views: &Vec<vk::ImageView>,
+    height: u32,
+    width: u32,
+) -> Result<Vec<vk::Framebuffer>> {
+    Ok(image_views
         .iter()
         .map(|i| {
             let attachments = &[*i];
             let create_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(data.render_pass)
+                .render_pass(render_pass)
                 .attachments(attachments)
-                .width(data.swapchain_extent.width)
-                .height(data.swapchain_extent.height)
+                .width(width)
+                .height(height)
                 .layers(1);
 
             device.create_framebuffer(&create_info, None)
         })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(())
+        .collect::<Result<Vec<_>, _>>()?)
 }
