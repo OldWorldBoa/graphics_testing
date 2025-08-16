@@ -22,7 +22,6 @@ pub unsafe fn create_instance(
     data: &mut AppData,
 ) -> Result<Instance> {
     // Application Info
-
     let application_info = vk::ApplicationInfo::builder()
         .application_name(b"Vulkan Tutorial (Rust)\0")
         .application_version(vk::make_version(1, 0, 0))
@@ -31,7 +30,6 @@ pub unsafe fn create_instance(
         .api_version(vk::make_version(1, 0, 0));
 
     // Layers
-
     let available_layers = entry
         .enumerate_instance_layer_properties()?
         .iter()

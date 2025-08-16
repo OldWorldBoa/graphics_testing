@@ -205,6 +205,9 @@ impl App {
             self.data.render_pass,
             self.data.swapchain_info.swapchain_extent,
         )?;
+        self.data.pipeline = pipeline;
+        self.data.pipeline_layout = pipeline_layout;
+
         self.data.framebuffers = create_framebuffers(
             &self.device,
             self.data.render_pass,
