@@ -58,6 +58,7 @@ pub unsafe fn create_render_pass(
 pub unsafe fn create_pipeline(
     device: &Device,
     render_pass: vk::RenderPass,
+    descriptor_set_layout: vk::DescriptorSetLayout,
     extent: vk::Extent2D,
 ) -> Result<(vk::PipelineLayout, vk::Pipeline)> {
     // Stages
@@ -136,7 +137,8 @@ pub unsafe fn create_pipeline(
         .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
     // Layout
-    let layout_info = vk::PipelineLayoutCreateInfo::builder();
+    let set_layouts = &[descriptor_set_layout];
+    let layout_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(set_layouts);
     let pipeline_layout = device.create_pipeline_layout(&layout_info, None)?;
 
     // Create

@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::{PhysicalDevice, SurfaceKHR};
 
-use crate::infrastructure::app::AppData;
 use crate::infrastructure::constants::DEVICE_EXTENSIONS;
 use crate::infrastructure::error::SuitabilityError;
 use crate::infrastructure::queue_family_indices::QueueFamilyIndices;

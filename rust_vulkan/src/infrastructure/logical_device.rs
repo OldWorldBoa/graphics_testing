@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::collections::HashSet;
 use vulkanalia::prelude::v1_0::*;
 
-use crate::infrastructure::app::AppData;
+use crate::infrastructure::app::AppInfrastructure;
 use crate::infrastructure::constants::{
     DEVICE_EXTENSIONS, PORTABILITY_MACOS_VERSION, VALIDATION_ENABLED, VALIDATION_LAYER,
 };
@@ -15,7 +15,7 @@ use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 pub unsafe fn create_logical_device(
     entry: &Entry,
     instance: &Instance,
-    data: &mut AppData,
+    data: &mut AppInfrastructure,
 ) -> Result<Device> {
     // Queue Create Infos
     let indices = QueueFamilyIndices::get(instance, data.surface, data.physical_device)?;

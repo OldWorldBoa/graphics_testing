@@ -16,6 +16,8 @@ use winit::window::WindowBuilder;
 pub mod infrastructure;
 use infrastructure::app::App;
 
+pub mod world;
+
 #[rustfmt::skip]
 fn main() -> Result<()> {
     pretty_env_logger::init();

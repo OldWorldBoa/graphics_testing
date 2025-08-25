@@ -2,7 +2,7 @@ use cgmath::{vec2, vec3};
 use vulkanalia::vk;
 use vulkanalia::Version;
 
-use crate::infrastructure::geometry::Vertex;
+use crate::world::vertex::Vertex;
 
 /// Whether the validation layers should be enabled.
 pub const VALIDATION_ENABLED: bool = cfg!(debug_assertions);

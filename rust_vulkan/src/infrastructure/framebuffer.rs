@@ -3,8 +3,6 @@ use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
 use vulkanalia::Device;
 
-use crate::infrastructure::app::AppData;
-
 //================================================
 // Framebuffers
 //================================================

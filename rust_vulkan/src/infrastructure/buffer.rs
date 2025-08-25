@@ -5,7 +5,7 @@ use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::{CommandPool, PhysicalDevice};
 
 use crate::infrastructure::constants::{INDICES, VERTICES};
-use crate::infrastructure::geometry::Vertex;
+use crate::infrastructure::geometry::{UniformBufferObject, Vertex};
 
 //================================================
 // Buffers
@@ -123,6 +123,28 @@ pub unsafe fn create_index_buffer(
     device.free_memory(staging_buffer_memory, None);
 
     Ok((index_buffer, index_buffer_memory))
+}
+
+pub unsafe fn create_uniform_buffers(
+    instance: &Instance,
+    device: &Device,
+    physical_device: PhysicalDevice,
+    num_buffers: usize,
+) -> Result<Vec<(vk::Buffer, vk::DeviceMemory)>> {
+    let mut data = vec![];
+
+    for _ in 0..num_buffers {
+        data.push(create_buffer(
+            instance,
+            device,
+            physical_device,
+            size_of::<UniformBufferObject>() as u64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
+        )?);
+    }
+
+    Ok(data)
 }
 
 //================================================

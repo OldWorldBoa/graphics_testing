@@ -8,7 +8,7 @@ use vulkanalia::vk::ExtDebugUtilsExtension;
 use vulkanalia::window as vk_window;
 use winit::window::Window;
 
-use crate::infrastructure::app::AppData;
+use crate::infrastructure::app::AppInfrastructure;
 use crate::infrastructure::constants::{
     PORTABILITY_MACOS_VERSION, VALIDATION_ENABLED, VALIDATION_LAYER,
 };
@@ -19,7 +19,7 @@ use crate::infrastructure::constants::{
 pub unsafe fn create_instance(
     window: &Window,
     entry: &Entry,
-    data: &mut AppData,
+    data: &mut AppInfrastructure,
 ) -> Result<Instance> {
     // Application Info
     let application_info = vk::ApplicationInfo::builder()
