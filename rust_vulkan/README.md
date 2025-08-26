@@ -47,6 +47,6 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 25. Done - Index buffer
 
 ### Chapter 7: Uniform buffers
-26. Descriptor set layout and buffer
-27. Descriptor pool and sets
+26. Done - Descriptor set layout and buffer
+27. Done - Descriptor pool and sets
 
