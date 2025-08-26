@@ -2,7 +2,7 @@ use anyhow::Result;
 use vulkanalia::bytecode::Bytecode;
 use vulkanalia::prelude::v1_0::*;
 
-use crate::infrastructure::geometry::Vertex;
+use crate::world::vertex::Vertex;
 
 //================================================
 // Pipeline
@@ -116,7 +116,7 @@ pub unsafe fn create_pipeline(
         .polygon_mode(vk::PolygonMode::FILL)
         .line_width(1.0)
         .cull_mode(vk::CullModeFlags::BACK)
-        .front_face(vk::FrontFace::CLOCKWISE)
+        .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .depth_bias_enable(false);
 
     // Multisample State

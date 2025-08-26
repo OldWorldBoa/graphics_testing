@@ -1,18 +1,20 @@
 use anyhow::Result;
-use std::time::Instant;
+use cgmath::{vec3, Deg};
 
-use crate::infrastructure::app::App;
+use crate::world::scene::Scene;
+use crate::world::vertex::Mat4;
 
-pub trait Automata {
-    fn work(&mut self, app: &App) -> Result<()>;
-}
+/*
+* impls in here will be put in the Scene.automata list
+*/
 
-pub struct Spinner {
-    pub start: Instant,
-}
+pub struct Spinner;
+impl Spinner {
+    pub fn work(scene: &mut Scene) -> Result<()> {
+        let time = scene.start.elapsed().as_secs_f32();
 
-impl Automata for Spinner {
-    fn work(&mut self, app: &App) -> Result<()> {
+        scene.uniform_data.model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
+
         Ok(())
     }
 }

@@ -2,7 +2,6 @@ use anyhow::Result;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::{PhysicalDevice, SurfaceKHR};
 
-use crate::infrastructure::constants::INDICES;
 use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 
 //================================================
@@ -27,12 +26,15 @@ pub unsafe fn create_command_pool(
 pub unsafe fn create_command_buffers(
     device: &Device,
     command_pool: vk::CommandPool,
-    framebuffers: &Vec<vk::Framebuffer>,
+    framebuffers: &[vk::Framebuffer],
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
     vertex_buffer: vk::Buffer,
     index_buffer: vk::Buffer,
+    descriptor_sets: &[vk::DescriptorSet],
     extent: vk::Extent2D,
+    indices_len: u32,
 ) -> Result<Vec<vk::CommandBuffer>> {
     // Allocate
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
@@ -69,7 +71,15 @@ pub unsafe fn create_command_buffers(
         device.cmd_bind_pipeline(*command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
         device.cmd_bind_vertex_buffers(*command_buffer, 0, &[vertex_buffer], &[0]);
         device.cmd_bind_index_buffer(*command_buffer, index_buffer, 0, vk::IndexType::UINT16);
-        device.cmd_draw_indexed(*command_buffer, INDICES.len() as u32, 1, 0, 0, 0);
+        device.cmd_bind_descriptor_sets(
+            *command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            pipeline_layout,
+            0,
+            &[descriptor_sets[i]],
+            &[],
+        );
+        device.cmd_draw_indexed(*command_buffer, indices_len, 1, 0, 0, 0);
         device.cmd_end_render_pass(*command_buffer);
 
         device.end_command_buffer(*command_buffer)?;

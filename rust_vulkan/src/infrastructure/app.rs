@@ -8,8 +8,7 @@
 )]
 
 use anyhow::{anyhow, Result};
-use cgmath::{point3, vec3, Deg};
-use std::time::Instant;
+use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
@@ -24,15 +23,18 @@ use crate::infrastructure::buffer::{
 };
 use crate::infrastructure::commands::{create_command_buffers, create_command_pool};
 use crate::infrastructure::constants::{MAX_FRAMES_IN_FLIGHT, VALIDATION_ENABLED};
-use crate::infrastructure::descriptor_set::create_descriptor_set_layout;
+use crate::infrastructure::descriptor::{
+    create_descriptor_pool, create_descriptor_set_layout, create_descriptor_sets,
+};
 use crate::infrastructure::framebuffer::create_framebuffers;
 use crate::infrastructure::instance::create_instance;
 use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::pick_physical_device;
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
+use crate::world::scene::create_scene;
+use crate::world::scene::Scene;
 use crate::world::uniform::UniformBufferObject;
-use crate::world::vertex::{Mat4, Vertex};
 
 /// Our Vulkan app.
 #[derive(Clone, Debug)]
@@ -40,12 +42,60 @@ pub struct App {
     pub entry: Entry,
     pub instance: Instance,
     pub infrastructure: AppInfrastructure,
-    pub data: AppData,
+    pub scene: Scene,
     pub device: Device,
     pub frame: usize,
     pub resized: bool,
-    // animation
-    pub start: Instant,
+}
+
+/// The Vulkan handles and associated properties used by our Vulkan app.
+#[derive(Clone, Debug, Default)]
+pub struct AppInfrastructure {
+    // Debug
+    pub messenger: vk::DebugUtilsMessengerEXT,
+    // Surface
+    pub surface: vk::SurfaceKHR,
+
+    // Physical Device / Logical Device
+    pub physical_device: vk::PhysicalDevice,
+    pub graphics_queue: vk::Queue,
+    pub present_queue: vk::Queue,
+
+    // Swapchain
+    pub swapchain_info: SwapchainInfo,
+
+    // Pipeline
+    pub render_pass: vk::RenderPass,
+    pub pipeline_layout: vk::PipelineLayout,
+    pub pipeline: vk::Pipeline,
+
+    // Framebuffers
+    pub framebuffers: Vec<vk::Framebuffer>,
+
+    // Command Pool
+    pub command_pool: vk::CommandPool,
+
+    // Buffers
+    pub vertex_buffer: vk::Buffer,
+    pub vertex_buffer_memory: vk::DeviceMemory,
+    pub index_buffer: vk::Buffer,
+    pub index_buffer_memory: vk::DeviceMemory,
+    pub uniform_buffers: Vec<vk::Buffer>,
+    pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
+
+    // Command Buffers
+    pub command_buffers: Vec<vk::CommandBuffer>,
+
+    // Sync Objects
+    pub image_available_semaphores: Vec<vk::Semaphore>,
+    pub render_finished_semaphores: Vec<vk::Semaphore>,
+    pub in_flight_fences: Vec<vk::Fence>,
+    pub images_in_flight: Vec<vk::Fence>,
+
+    // Descriptors
+    pub descriptor_set_layout: vk::DescriptorSetLayout,
+    pub descriptor_pool: vk::DescriptorPool,
+    pub descriptor_sets: Vec<vk::DescriptorSet>,
 }
 
 impl App {
@@ -70,7 +120,6 @@ impl App {
             &device,
             infrastructure.swapchain_info.swapchain_format,
         )?;
-        infrastructure.descriptor_set_layout = create_descriptor_set_layout(&device)?;
 
         let (pipeline_layout, pipeline) = create_pipeline(
             &device,
@@ -94,12 +143,18 @@ impl App {
             infrastructure.physical_device,
         )?;
 
+        let scene = create_scene(
+            infrastructure.swapchain_info.swapchain_extent.width as f32
+                / infrastructure.swapchain_info.swapchain_extent.height as f32,
+        );
+
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
             &instance,
             &device,
             infrastructure.command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
+            scene.vertex_data,
         )?;
         infrastructure.vertex_buffer = vertex_buffer;
         infrastructure.vertex_buffer_memory = vertex_buffer_memory;
@@ -110,6 +165,7 @@ impl App {
             infrastructure.command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
+            scene.vertex_indices,
         )?;
         infrastructure.index_buffer = index_buffer;
         infrastructure.index_buffer_memory = index_buffer_memory;
@@ -130,16 +186,33 @@ impl App {
                 .push(uniform_buffer_memory);
         }
 
+        infrastructure.descriptor_set_layout = create_descriptor_set_layout(&device)?;
+        infrastructure.descriptor_pool = create_descriptor_pool(
+            &device,
+            infrastructure.swapchain_info.swapchain_images.len() as u32,
+        )?;
+        infrastructure.descriptor_sets = create_descriptor_sets(
+            &device,
+            &infrastructure.uniform_buffers,
+            infrastructure.descriptor_set_layout,
+            infrastructure.descriptor_pool,
+            infrastructure.swapchain_info.swapchain_images.len(),
+        )?;
+
         infrastructure.command_buffers = create_command_buffers(
             &device,
             infrastructure.command_pool,
             &infrastructure.framebuffers,
             infrastructure.render_pass,
             infrastructure.pipeline,
+            infrastructure.pipeline_layout,
             infrastructure.vertex_buffer,
             infrastructure.index_buffer,
+            &infrastructure.descriptor_sets,
             infrastructure.swapchain_info.swapchain_extent,
+            scene.vertex_indices.len() as u32,
         )?;
+
         create_sync_objects(&device, &mut infrastructure)?;
 
         Ok(Self {
@@ -149,7 +222,7 @@ impl App {
             device,
             frame: 0,
             resized: false,
-            start: Instant::now(),
+            scene,
         })
     }
 
@@ -241,7 +314,7 @@ impl App {
             &self.device,
             self.infrastructure.swapchain_info.swapchain_format,
         )?;
-        self.infrastructure.descriptor_set_layout = create_descriptor_set_layout(&self.device)?;
+
         let (pipeline_layout, pipeline) = create_pipeline(
             &self.device,
             self.infrastructure.render_pass,
@@ -275,16 +348,33 @@ impl App {
                 .push(uniform_buffer_memory);
         }
 
+        self.infrastructure.descriptor_set_layout = create_descriptor_set_layout(&self.device)?;
+        self.infrastructure.descriptor_pool = create_descriptor_pool(
+            &self.device,
+            self.infrastructure.swapchain_info.swapchain_images.len() as u32,
+        )?;
+        self.infrastructure.descriptor_sets = create_descriptor_sets(
+            &self.device,
+            &self.infrastructure.uniform_buffers,
+            self.infrastructure.descriptor_set_layout,
+            self.infrastructure.descriptor_pool,
+            self.infrastructure.swapchain_info.swapchain_images.len(),
+        )?;
+
         self.infrastructure.command_buffers = create_command_buffers(
             &self.device,
             self.infrastructure.command_pool,
             &self.infrastructure.framebuffers,
             self.infrastructure.render_pass,
             self.infrastructure.pipeline,
+            self.infrastructure.pipeline_layout,
             self.infrastructure.vertex_buffer,
             self.infrastructure.index_buffer,
+            &self.infrastructure.descriptor_sets,
             self.infrastructure.swapchain_info.swapchain_extent,
+            self.scene.vertex_indices.len() as u32,
         )?;
+
         self.infrastructure.images_in_flight.resize(
             self.infrastructure.swapchain_info.swapchain_images.len(),
             vk::Fence::null(),
@@ -294,36 +384,17 @@ impl App {
     }
 
     unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
-        let time = self.start.elapsed().as_secs_f32();
-
-        let model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
-
-        let view = Mat4::look_at_rh(
-            point3(2.0, 2.0, 2.0),
-            point3(0.0, 0.0, 0.0),
-            vec3(0.0, 0.0, 1.0),
-        );
-
-        let mut proj = cgmath::perspective(
-            Deg(45.0),
-            self.infrastructure.swapchain_info.swapchain_extent.width as f32
-                / self.infrastructure.swapchain_info.swapchain_extent.height as f32,
-            0.1,
-            10.0,
-        );
-
-        proj[1][1] *= -1.0;
-
-        let ubo = UniformBufferObject { model, view, proj };
-
         let memory = self.device.map_memory(
             self.infrastructure.uniform_buffers_memory[image_index],
             0,
             size_of::<UniformBufferObject>() as u64,
             vk::MemoryMapFlags::empty(),
-        );
+        )?;
 
-        memcpy(&ubo, memory.cast(), 1);
+        memcpy(&self.scene.uniform_data, memory.cast(), 1);
+
+        self.device
+            .unmap_memory(self.infrastructure.uniform_buffers_memory[image_index]);
 
         Ok(())
     }
@@ -335,6 +406,7 @@ impl App {
 
         self.destroy_swapchain();
         self.device.destroy_descriptor_set_layout(self.infrastructure.descriptor_set_layout, None);
+        self.device.destroy_descriptor_pool(self.infrastructure.descriptor_pool, None);
         self.infrastructure.in_flight_fences.iter().for_each(|f| self.device.destroy_fence(*f, None));
         self.infrastructure.render_finished_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
         self.infrastructure.image_available_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
@@ -342,8 +414,8 @@ impl App {
         self.device.destroy_buffer(self.infrastructure.index_buffer, None);
         self.device.free_memory(self.infrastructure.vertex_buffer_memory, None);
         self.device.destroy_buffer(self.infrastructure.vertex_buffer, None);
-        self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
         self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
+        self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
         self.device.destroy_command_pool(self.infrastructure.command_pool, None);
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.infrastructure.surface, None);
@@ -366,52 +438,6 @@ impl App {
         self.infrastructure.swapchain_info.swapchain_image_views.iter().for_each(|v| self.device.destroy_image_view(*v, None));
         self.device.destroy_swapchain_khr(self.infrastructure.swapchain_info.swapchain, None);
     }
-}
-
-/// The Vulkan handles and associated properties used by our Vulkan app.
-#[derive(Clone, Debug, Default)]
-pub struct AppInfrastructure {
-    // Debug
-    pub messenger: vk::DebugUtilsMessengerEXT,
-    // Surface
-    pub surface: vk::SurfaceKHR,
-    // Physical Device / Logical Device
-    pub physical_device: vk::PhysicalDevice,
-    pub graphics_queue: vk::Queue,
-    pub present_queue: vk::Queue,
-    // Swapchain
-    pub swapchain_info: SwapchainInfo,
-    // Pipeline
-    pub render_pass: vk::RenderPass,
-    pub pipeline_layout: vk::PipelineLayout,
-    pub pipeline: vk::Pipeline,
-    // Framebuffers
-    pub framebuffers: Vec<vk::Framebuffer>,
-    // Command Pool
-    pub command_pool: vk::CommandPool,
-    // Buffers
-    pub vertex_buffer: vk::Buffer,
-    pub vertex_buffer_memory: vk::DeviceMemory,
-    pub index_buffer: vk::Buffer,
-    pub index_buffer_memory: vk::DeviceMemory,
-    pub uniform_buffers: Vec<vk::Buffer>,
-    pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
-    // Command Buffers
-    pub command_buffers: Vec<vk::CommandBuffer>,
-    // Sync Objects
-    pub image_available_semaphores: Vec<vk::Semaphore>,
-    pub render_finished_semaphores: Vec<vk::Semaphore>,
-    pub in_flight_fences: Vec<vk::Fence>,
-    pub images_in_flight: Vec<vk::Fence>,
-    // Descriptor Sets
-    pub descriptor_set_layout: vk::DescriptorSetLayout,
-}
-
-#[derive(Debug, Clone)]
-pub struct AppData {
-    uniform_data: UniformBufferObject,
-    vertex_data: [Vertex; 4],
-    vertex_indices: [u16; 6],
 }
 
 unsafe fn create_sync_objects(device: &Device, data: &mut AppInfrastructure) -> Result<()> {

@@ -2,7 +2,7 @@ pub mod app;
 pub mod buffer;
 pub mod commands;
 pub mod constants;
-pub mod descriptor_set;
+pub mod descriptor;
 pub mod error;
 pub mod framebuffer;
 pub mod instance;

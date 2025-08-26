@@ -4,8 +4,8 @@ use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::{CommandPool, PhysicalDevice};
 
-use crate::infrastructure::constants::{INDICES, VERTICES};
-use crate::infrastructure::geometry::{UniformBufferObject, Vertex};
+use crate::world::uniform::UniformBufferObject;
+use crate::world::vertex::Vertex;
 
 //================================================
 // Buffers
@@ -17,10 +17,11 @@ pub unsafe fn create_vertex_buffer(
     command_pool: CommandPool,
     graphics_queue: vk::Queue,
     physical_device: PhysicalDevice,
+    vertices: [Vertex; 4],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
-    let size = (size_of::<Vertex>() * VERTICES.len()) as u64;
+    let size = (size_of::<Vertex>() * vertices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -35,7 +36,7 @@ pub unsafe fn create_vertex_buffer(
 
     let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
 
-    memcpy(VERTICES.as_ptr(), memory.cast(), VERTICES.len());
+    memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
 
     device.unmap_memory(staging_buffer_memory);
 
@@ -74,10 +75,11 @@ pub unsafe fn create_index_buffer(
     command_pool: CommandPool,
     graphics_queue: vk::Queue,
     physical_device: PhysicalDevice,
+    indices: [u16; 6],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
-    let size = (size_of::<u16>() * INDICES.len()) as u64;
+    let size = (size_of::<u16>() * indices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -92,7 +94,7 @@ pub unsafe fn create_index_buffer(
 
     let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
 
-    memcpy(INDICES.as_ptr(), memory.cast(), INDICES.len());
+    memcpy(indices.as_ptr(), memory.cast(), indices.len());
 
     device.unmap_memory(staging_buffer_memory);
 
