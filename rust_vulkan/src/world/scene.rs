@@ -21,7 +21,7 @@ pub struct SceneData {
     pub uniform_data: UniformBufferObject,
     pub vertex_data: [Vertex; 4],
     pub vertex_indices: [u16; 6],
-    pub images: Vec<(vk::Image, vk::DeviceMemory)>,
+    pub images: Vec<(vk::Image, vk::ImageView, vk::DeviceMemory)>,
 }
 
 pub fn create_scene(aspect_ratio: f32) -> Scene {
@@ -47,10 +47,10 @@ pub fn create_scene(aspect_ratio: f32) -> Scene {
             start: Instant::now(),
             uniform_data,
             vertex_data: [
-                Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0)),
-                Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0)),
-                Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0)),
-                Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0)),
+                Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
+                Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
+                Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
+                Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
             ],
             vertex_indices,
             images: vec![],
@@ -77,3 +77,5 @@ pub unsafe fn load_images(
 
     Ok(())
 }
+
+unsafe fn create_image_views() {}

@@ -51,9 +51,9 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 27. Done - Descriptor pool and sets
 
 ### Chapter 8: Texture Mapping
-28. Curr - Images
-29. Image view and sampler
-30. Combined Image sampler
+28. Done - Images
+29. Done - Image view and sampler
+30. Done - Combined Image sampler
 
 ### Chapter 9: Model
 31. Depth buffering

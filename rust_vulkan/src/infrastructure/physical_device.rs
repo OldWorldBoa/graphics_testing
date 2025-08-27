@@ -47,6 +47,11 @@ unsafe fn check_physical_device(
         return Err(anyhow!(SuitabilityError("Insufficient swapchain support.")));
     }
 
+    let features = instance.get_physical_device_features(physical_device);
+    if features.sampler_anisotropy != vk::TRUE {
+        return Err(anyhow!(SuitabilityError("No sampler anisotropy.")));
+    }
+
     Ok(())
 }
 

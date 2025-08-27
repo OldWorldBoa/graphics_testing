@@ -10,6 +10,27 @@ use crate::infrastructure::{
     commands::{begin_single_time_commands, end_single_time_commands},
 };
 
+pub unsafe fn create_texture_sampler(device: &Device) -> Result<vk::Sampler> {
+    let info = vk::SamplerCreateInfo::builder()
+        .mag_filter(vk::Filter::LINEAR)
+        .min_filter(vk::Filter::LINEAR)
+        .address_mode_u(vk::SamplerAddressMode::REPEAT)
+        .address_mode_v(vk::SamplerAddressMode::REPEAT)
+        .address_mode_w(vk::SamplerAddressMode::REPEAT)
+        .anisotropy_enable(true)
+        .max_anisotropy(16.0)
+        .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+        .unnormalized_coordinates(false)
+        .compare_enable(false)
+        .compare_op(vk::CompareOp::ALWAYS)
+        .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+        .mip_lod_bias(0.0)
+        .min_lod(0.0)
+        .max_lod(0.0);
+
+    Ok(device.create_sampler(&info, None)?)
+}
+
 pub unsafe fn create_texture_image(
     path: &str,
     device: &Device,
@@ -17,7 +38,7 @@ pub unsafe fn create_texture_image(
     physical_device: PhysicalDevice,
     command_pool: vk::CommandPool,
     graphics_queue: vk::Queue,
-) -> Result<(vk::Image, vk::DeviceMemory)> {
+) -> Result<(vk::Image, vk::ImageView, vk::DeviceMemory)> {
     let image = File::open(path)?;
 
     let decoder = png::Decoder::new(image);
@@ -88,7 +109,11 @@ pub unsafe fn create_texture_image(
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
 
-    Ok((image, image_memory))
+    Ok((
+        image,
+        create_image_view(device, image, vk::Format::R8G8B8A8_SRGB)?,
+        image_memory,
+    ))
 }
 
 pub unsafe fn create_vk_image(
@@ -136,7 +161,7 @@ pub unsafe fn create_vk_image(
     Ok((image, image_memory))
 }
 
-pub unsafe fn transition_image_layout(
+unsafe fn transition_image_layout(
     device: &Device,
     command_pool: vk::CommandPool,
     graphics_queue: vk::Queue,
@@ -196,7 +221,7 @@ pub unsafe fn transition_image_layout(
     Ok(())
 }
 
-pub unsafe fn copy_buffer_to_image(
+unsafe fn copy_buffer_to_image(
     device: &Device,
     command_pool: vk::CommandPool,
     graphics_queue: vk::Queue,
@@ -236,4 +261,32 @@ pub unsafe fn copy_buffer_to_image(
     end_single_time_commands(device, graphics_queue, command_pool, command_buffer)?;
 
     Ok(())
+}
+
+pub unsafe fn create_image_view(
+    device: &Device,
+    image: vk::Image,
+    format: vk::Format,
+) -> Result<vk::ImageView> {
+    let subresource_range = vk::ImageSubresourceRange::builder()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .base_mip_level(0)
+        .level_count(1)
+        .base_array_layer(0)
+        .layer_count(1);
+
+    let components = vk::ComponentMapping::builder()
+        .r(vk::ComponentSwizzle::IDENTITY)
+        .g(vk::ComponentSwizzle::IDENTITY)
+        .b(vk::ComponentSwizzle::IDENTITY)
+        .a(vk::ComponentSwizzle::IDENTITY);
+
+    let info = vk::ImageViewCreateInfo::builder()
+        .image(image)
+        .view_type(vk::ImageViewType::_2D)
+        .format(vk::Format::R8G8B8A8_SRGB)
+        .components(components)
+        .subresource_range(subresource_range);
+
+    Ok(device.create_image_view(&info, None)?)
 }

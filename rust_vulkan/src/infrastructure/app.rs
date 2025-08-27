@@ -27,6 +27,7 @@ use crate::infrastructure::descriptor::{
     create_descriptor_pool, create_descriptor_set_layout, create_descriptor_sets,
 };
 use crate::infrastructure::framebuffer::create_framebuffers;
+use crate::infrastructure::image::create_texture_sampler;
 use crate::infrastructure::instance::create_instance;
 use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::pick_physical_device;
@@ -96,6 +97,9 @@ pub struct AppInfrastructure {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
+
+    // Sampler
+    pub texture_sampler: vk::Sampler,
 }
 
 impl App {
@@ -159,6 +163,8 @@ impl App {
             infrastructure.graphics_queue,
         )?;
 
+        infrastructure.texture_sampler = create_texture_sampler(&device)?;
+
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
             &instance,
             &device,
@@ -203,7 +209,9 @@ impl App {
         )?;
         infrastructure.descriptor_sets = create_descriptor_sets(
             &device,
+            infrastructure.texture_sampler,
             &infrastructure.uniform_buffers,
+            &scene.scene_data.images,
             infrastructure.descriptor_set_layout,
             infrastructure.descriptor_pool,
             infrastructure.swapchain_info.swapchain_images.len(),
@@ -368,7 +376,9 @@ impl App {
         )?;
         self.infrastructure.descriptor_sets = create_descriptor_sets(
             &self.device,
+            self.infrastructure.texture_sampler,
             &self.infrastructure.uniform_buffers,
+            &self.scene.scene_data.images,
             self.infrastructure.descriptor_set_layout,
             self.infrastructure.descriptor_pool,
             self.infrastructure.swapchain_info.swapchain_images.len(),
@@ -419,9 +429,11 @@ impl App {
 
         self.destroy_swapchain();
 
+        self.device.destroy_sampler(self.infrastructure.texture_sampler, None);
         self.scene.scene_data.images.iter().for_each(|i| {
             self.device.destroy_image(i.0, None);
-            self.device.free_memory(i.1, None);
+            self.device.destroy_image_view(i.1, None);
+            self.device.free_memory(i.2, None);
         });
         self.infrastructure.in_flight_fences.iter().for_each(|f| self.device.destroy_fence(*f, None));
         self.infrastructure.render_finished_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));

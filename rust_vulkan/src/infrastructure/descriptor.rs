@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use vk::DescriptorPool;
 use vulkanalia::{prelude::v1_0::*, vk::DescriptorSet};
 
-use crate::world::uniform::UniformBufferObject;
+use crate::{infrastructure::error::SuitabilityError, world::uniform::UniformBufferObject};
 
 pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::DescriptorSetLayout> {
     let ubo_binding = vk::DescriptorSetLayoutBinding::builder()
@@ -11,7 +11,13 @@ pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::Descri
         .descriptor_count(1)
         .stage_flags(vk::ShaderStageFlags::VERTEX);
 
-    let bindings = &[ubo_binding];
+    let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
+        .binding(1)
+        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+        .descriptor_count(1)
+        .stage_flags(vk::ShaderStageFlags::FRAGMENT);
+
+    let bindings = &[ubo_binding, sampler_binding];
     let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(bindings);
 
     Ok(device.create_descriptor_set_layout(&info, None)?)
@@ -25,7 +31,11 @@ pub unsafe fn create_descriptor_pool(
         .type_(vk::DescriptorType::UNIFORM_BUFFER)
         .descriptor_count(swapchain_image_len);
 
-    let pool_size = &[ubo_size];
+    let sampler_size = vk::DescriptorPoolSize::builder()
+        .type_(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+        .descriptor_count(swapchain_image_len);
+
+    let pool_size = &[ubo_size, sampler_size];
     let info = vk::DescriptorPoolCreateInfo::builder()
         .pool_sizes(pool_size)
         .max_sets(swapchain_image_len);
@@ -35,7 +45,9 @@ pub unsafe fn create_descriptor_pool(
 
 pub unsafe fn create_descriptor_sets(
     device: &Device,
+    texture_sampler: vk::Sampler,
     uniform_buffers: &[vk::Buffer],
+    image_buffers: &[(vk::Image, vk::ImageView, vk::DeviceMemory)],
     layout: vk::DescriptorSetLayout,
     pool: vk::DescriptorPool,
     swapchain_image_len: usize,
@@ -61,7 +73,29 @@ pub unsafe fn create_descriptor_sets(
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(buffer_info);
 
-        device.update_descriptor_sets(&[ubo_write], &[] as &[vk::CopyDescriptorSet]);
+        if image_buffers.len() > 0 {
+            let image_info = vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(image_buffers[0].1)
+                .sampler(texture_sampler);
+
+            let image_infos = &[image_info];
+            let sampler_write = vk::WriteDescriptorSet::builder()
+                .dst_set(desc_sets[i])
+                .dst_binding(1)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(image_infos);
+
+            device.update_descriptor_sets(
+                &[ubo_write, sampler_write],
+                &[] as &[vk::CopyDescriptorSet],
+            );
+        } else {
+            return Err(anyhow!(SuitabilityError(
+                "Unable to build descriptor sets without image_buffers."
+            )));
+        }
     }
 
     Ok(desc_sets)
