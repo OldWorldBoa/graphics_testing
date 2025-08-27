@@ -5,6 +5,7 @@ pub mod constants;
 pub mod descriptor;
 pub mod error;
 pub mod framebuffer;
+pub mod image;
 pub mod instance;
 pub mod logical_device;
 pub mod physical_device;

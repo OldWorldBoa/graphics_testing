@@ -4,6 +4,7 @@ use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::{CommandPool, PhysicalDevice};
 
+use crate::infrastructure::commands::{begin_single_time_commands, end_single_time_commands};
 use crate::world::uniform::UniformBufferObject;
 use crate::world::vertex::Vertex;
 
@@ -153,7 +154,7 @@ pub unsafe fn create_uniform_buffers(
 // Shared (Buffers)
 //================================================
 
-unsafe fn create_buffer(
+pub unsafe fn create_buffer(
     instance: &Instance,
     device: &Device,
     physical_device: PhysicalDevice,
@@ -198,39 +199,17 @@ unsafe fn copy_buffer(
     destination: vk::Buffer,
     size: vk::DeviceSize,
 ) -> Result<()> {
-    // Allocate
-    let info = vk::CommandBufferAllocateInfo::builder()
-        .level(vk::CommandBufferLevel::PRIMARY)
-        .command_pool(command_pool)
-        .command_buffer_count(1);
-
-    let command_buffer = device.allocate_command_buffers(&info)?[0];
-
-    // Commands
-    let info =
-        vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-    device.begin_command_buffer(command_buffer, &info)?;
+    let command_buffer = begin_single_time_commands(device, command_pool)?;
 
     let regions = vk::BufferCopy::builder().size(size);
     device.cmd_copy_buffer(command_buffer, source, destination, &[regions]);
 
-    device.end_command_buffer(command_buffer)?;
-
-    // Submit
-    let command_buffers = &[command_buffer];
-    let info = vk::SubmitInfo::builder().command_buffers(command_buffers);
-
-    device.queue_submit(graphics_queue, &[info], vk::Fence::null())?;
-    device.queue_wait_idle(graphics_queue)?;
-
-    // Cleanup
-    device.free_command_buffers(command_pool, &[command_buffer]);
+    end_single_time_commands(device, graphics_queue, command_pool, command_buffer)?;
 
     Ok(())
 }
 
-unsafe fn get_memory_type_index(
+pub unsafe fn get_memory_type_index(
     instance: &Instance,
     physical_device: PhysicalDevice,
     properties: vk::MemoryPropertyFlags,

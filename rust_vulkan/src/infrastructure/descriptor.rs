@@ -13,9 +13,8 @@ pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::Descri
 
     let bindings = &[ubo_binding];
     let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(bindings);
-    let descriptor_set_layout = device.create_descriptor_set_layout(&info, None)?;
 
-    Ok(descriptor_set_layout)
+    Ok(device.create_descriptor_set_layout(&info, None)?)
 }
 
 pub unsafe fn create_descriptor_pool(

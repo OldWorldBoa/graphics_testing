@@ -1,7 +1,7 @@
 use anyhow::Result;
 use cgmath::{vec3, Deg};
 
-use crate::world::scene::Scene;
+use crate::world::scene::SceneData;
 use crate::world::vertex::Mat4;
 
 /*
@@ -10,10 +10,11 @@ use crate::world::vertex::Mat4;
 
 pub struct Spinner;
 impl Spinner {
-    pub fn work(scene: &mut Scene) -> Result<()> {
-        let time = scene.start.elapsed().as_secs_f32();
+    pub fn work(scene_data: &mut SceneData) -> Result<()> {
+        let time = scene_data.start.elapsed().as_secs_f32();
 
-        scene.uniform_data.model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
+        scene_data.uniform_data.model =
+            Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
 
         Ok(())
     }

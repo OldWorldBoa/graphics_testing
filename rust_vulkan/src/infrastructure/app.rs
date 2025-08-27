@@ -32,8 +32,8 @@ use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::pick_physical_device;
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
-use crate::world::scene::create_scene;
 use crate::world::scene::Scene;
+use crate::world::scene::{create_scene, load_images};
 use crate::world::uniform::UniformBufferObject;
 
 /// Our Vulkan app.
@@ -121,6 +121,8 @@ impl App {
             infrastructure.swapchain_info.swapchain_format,
         )?;
 
+        infrastructure.descriptor_set_layout = create_descriptor_set_layout(&device)?;
+
         let (pipeline_layout, pipeline) = create_pipeline(
             &device,
             infrastructure.render_pass,
@@ -143,10 +145,19 @@ impl App {
             infrastructure.physical_device,
         )?;
 
-        let scene = create_scene(
+        let mut scene = create_scene(
             infrastructure.swapchain_info.swapchain_extent.width as f32
                 / infrastructure.swapchain_info.swapchain_extent.height as f32,
         );
+
+        load_images(
+            &mut scene.scene_data,
+            &device,
+            &instance,
+            infrastructure.physical_device,
+            infrastructure.command_pool,
+            infrastructure.graphics_queue,
+        )?;
 
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
             &instance,
@@ -154,7 +165,7 @@ impl App {
             infrastructure.command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
-            scene.vertex_data,
+            scene.scene_data.vertex_data,
         )?;
         infrastructure.vertex_buffer = vertex_buffer;
         infrastructure.vertex_buffer_memory = vertex_buffer_memory;
@@ -165,7 +176,7 @@ impl App {
             infrastructure.command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
-            scene.vertex_indices,
+            scene.scene_data.vertex_indices,
         )?;
         infrastructure.index_buffer = index_buffer;
         infrastructure.index_buffer_memory = index_buffer_memory;
@@ -186,7 +197,6 @@ impl App {
                 .push(uniform_buffer_memory);
         }
 
-        infrastructure.descriptor_set_layout = create_descriptor_set_layout(&device)?;
         infrastructure.descriptor_pool = create_descriptor_pool(
             &device,
             infrastructure.swapchain_info.swapchain_images.len() as u32,
@@ -210,7 +220,7 @@ impl App {
             infrastructure.index_buffer,
             &infrastructure.descriptor_sets,
             infrastructure.swapchain_info.swapchain_extent,
-            scene.vertex_indices.len() as u32,
+            scene.scene_data.vertex_indices.len() as u32,
         )?;
 
         create_sync_objects(&device, &mut infrastructure)?;
@@ -228,6 +238,10 @@ impl App {
 
     /// Renders a frame for our Vulkan app.
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+        for work in self.scene.automata.iter() {
+            work(&mut self.scene.scene_data)?;
+        }
+
         let in_flight_fence = self.infrastructure.in_flight_fences[self.frame];
 
         self.device
@@ -348,7 +362,6 @@ impl App {
                 .push(uniform_buffer_memory);
         }
 
-        self.infrastructure.descriptor_set_layout = create_descriptor_set_layout(&self.device)?;
         self.infrastructure.descriptor_pool = create_descriptor_pool(
             &self.device,
             self.infrastructure.swapchain_info.swapchain_images.len() as u32,
@@ -372,7 +385,7 @@ impl App {
             self.infrastructure.index_buffer,
             &self.infrastructure.descriptor_sets,
             self.infrastructure.swapchain_info.swapchain_extent,
-            self.scene.vertex_indices.len() as u32,
+            self.scene.scene_data.vertex_indices.len() as u32,
         )?;
 
         self.infrastructure.images_in_flight.resize(
@@ -391,7 +404,7 @@ impl App {
             vk::MemoryMapFlags::empty(),
         )?;
 
-        memcpy(&self.scene.uniform_data, memory.cast(), 1);
+        memcpy(&self.scene.scene_data.uniform_data, memory.cast(), 1);
 
         self.device
             .unmap_memory(self.infrastructure.uniform_buffers_memory[image_index]);
@@ -405,8 +418,11 @@ impl App {
         self.device.device_wait_idle().unwrap();
 
         self.destroy_swapchain();
-        self.device.destroy_descriptor_set_layout(self.infrastructure.descriptor_set_layout, None);
-        self.device.destroy_descriptor_pool(self.infrastructure.descriptor_pool, None);
+
+        self.scene.scene_data.images.iter().for_each(|i| {
+            self.device.destroy_image(i.0, None);
+            self.device.free_memory(i.1, None);
+        });
         self.infrastructure.in_flight_fences.iter().for_each(|f| self.device.destroy_fence(*f, None));
         self.infrastructure.render_finished_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
         self.infrastructure.image_available_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
@@ -414,9 +430,8 @@ impl App {
         self.device.destroy_buffer(self.infrastructure.index_buffer, None);
         self.device.free_memory(self.infrastructure.vertex_buffer_memory, None);
         self.device.destroy_buffer(self.infrastructure.vertex_buffer, None);
-        self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
-        self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
         self.device.destroy_command_pool(self.infrastructure.command_pool, None);
+        self.device.destroy_descriptor_set_layout(self.infrastructure.descriptor_set_layout, None);
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.infrastructure.surface, None);
 
@@ -431,6 +446,9 @@ impl App {
     #[rustfmt::skip]
     unsafe fn destroy_swapchain(&mut self) {
         self.device.free_command_buffers(self.infrastructure.command_pool, &self.infrastructure.command_buffers);
+        self.device.destroy_descriptor_pool(self.infrastructure.descriptor_pool, None);
+        self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
+        self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
         self.infrastructure.framebuffers.iter().for_each(|f| self.device.destroy_framebuffer(*f, None));
         self.device.destroy_pipeline(self.infrastructure.pipeline, None);
         self.device.destroy_pipeline_layout(self.infrastructure.pipeline_layout, None);

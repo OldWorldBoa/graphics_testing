@@ -1,18 +1,27 @@
 use anyhow::Result;
 use cgmath::{point3, vec2, vec3, Deg};
 use std::time::Instant;
+use vk::PhysicalDevice;
+use vulkanalia::prelude::v1_0::*;
 
+use crate::infrastructure::image::create_texture_image;
 use crate::world::automata::Spinner;
 use crate::world::uniform::UniformBufferObject;
 use crate::world::vertex::{Mat4, Vertex};
 
 #[derive(Debug, Clone)]
 pub struct Scene {
+    pub automata: Vec<fn(scene_data: &mut SceneData) -> Result<()>>,
+    pub scene_data: SceneData,
+}
+
+#[derive(Debug, Clone)]
+pub struct SceneData {
     pub start: Instant,
-    pub automata: Vec<fn(app_scene: &mut Scene) -> Result<()>>,
     pub uniform_data: UniformBufferObject,
     pub vertex_data: [Vertex; 4],
     pub vertex_indices: [u16; 6],
+    pub images: Vec<(vk::Image, vk::DeviceMemory)>,
 }
 
 pub fn create_scene(aspect_ratio: f32) -> Scene {
@@ -33,15 +42,38 @@ pub fn create_scene(aspect_ratio: f32) -> Scene {
     let vertex_indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
     Scene {
-        start: Instant::now(),
         automata: vec![Spinner::work],
-        uniform_data,
-        vertex_data: [
-            Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0)),
-            Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0)),
-            Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0)),
-            Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0)),
-        ],
-        vertex_indices,
+        scene_data: SceneData {
+            start: Instant::now(),
+            uniform_data,
+            vertex_data: [
+                Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0)),
+                Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0)),
+                Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0)),
+                Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0)),
+            ],
+            vertex_indices,
+            images: vec![],
+        },
     }
+}
+
+pub unsafe fn load_images(
+    scene_data: &mut SceneData,
+    device: &Device,
+    instance: &Instance,
+    physical_device: PhysicalDevice,
+    command_pool: vk::CommandPool,
+    graphics_queue: vk::Queue,
+) -> Result<()> {
+    scene_data.images.push(create_texture_image(
+        "resources/texture.png",
+        device,
+        instance,
+        physical_device,
+        command_pool,
+        graphics_queue,
+    )?);
+
+    Ok(())
 }
