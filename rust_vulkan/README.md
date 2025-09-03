@@ -56,5 +56,5 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 30. Done - Combined Image sampler
 
 ### Chapter 9: Model
-31. Depth buffering
+31. Done - Depth buffering
 32. Loading models

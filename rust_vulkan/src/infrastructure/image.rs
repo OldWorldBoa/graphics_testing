@@ -64,13 +64,14 @@ pub unsafe fn create_texture_image(
 
     device.unmap_memory(staging_buffer_memory);
 
+    let format = vk::Format::R8G8B8A8_SRGB;
     let (image, image_memory) = create_vk_image(
         device,
         physical_device,
         instance,
         width,
         height,
-        vk::Format::R8G8B8A8_SRGB,
+        format,
         vk::ImageTiling::OPTIMAL,
         vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -81,7 +82,7 @@ pub unsafe fn create_texture_image(
         command_pool,
         graphics_queue,
         image,
-        vk::Format::R8G8B8A8_SRGB,
+        format,
         vk::ImageLayout::UNDEFINED,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
     )?;
@@ -101,7 +102,7 @@ pub unsafe fn create_texture_image(
         command_pool,
         graphics_queue,
         image,
-        vk::Format::R8G8B8A8_SRGB,
+        format,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
     )?;
@@ -111,12 +112,81 @@ pub unsafe fn create_texture_image(
 
     Ok((
         image,
-        create_image_view(device, image, vk::Format::R8G8B8A8_SRGB)?,
+        create_image_view(device, image, format, vk::ImageAspectFlags::COLOR)?,
         image_memory,
     ))
 }
 
-pub unsafe fn create_vk_image(
+pub unsafe fn create_depth_image(
+    device: &Device,
+    instance: &Instance,
+    physical_device: PhysicalDevice,
+    command_pool: vk::CommandPool,
+    graphics_queue: vk::Queue,
+    swapchain_extent: vk::Extent2D,
+) -> Result<(vk::Image, vk::ImageView, vk::DeviceMemory)> {
+    let format = get_depth_format(instance, physical_device)?;
+
+    let (image, image_memory) = create_vk_image(
+        device,
+        physical_device,
+        instance,
+        swapchain_extent.width,
+        swapchain_extent.height,
+        format,
+        vk::ImageTiling::OPTIMAL,
+        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    )?;
+
+    Ok((
+        image,
+        create_image_view(device, image, format, vk::ImageAspectFlags::DEPTH)?,
+        image_memory,
+    ))
+}
+
+pub unsafe fn get_depth_format(
+    instance: &Instance,
+    physical_device: PhysicalDevice,
+) -> Result<vk::Format> {
+    let candidates = &[
+        vk::Format::D32_SFLOAT,
+        vk::Format::D32_SFLOAT_S8_UINT,
+        vk::Format::D24_UNORM_S8_UINT,
+    ];
+
+    get_supported_depth_format(
+        instance,
+        physical_device,
+        candidates,
+        vk::ImageTiling::OPTIMAL,
+        vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
+    )
+}
+
+unsafe fn get_supported_depth_format(
+    instance: &Instance,
+    physical_device: PhysicalDevice,
+    candidates: &[vk::Format],
+    tiling: vk::ImageTiling,
+    features: vk::FormatFeatureFlags,
+) -> Result<vk::Format> {
+    candidates
+        .iter()
+        .cloned()
+        .find(|f| {
+            let properties = instance.get_physical_device_format_properties(physical_device, *f);
+            match tiling {
+                vk::ImageTiling::LINEAR => properties.linear_tiling_features.contains(features),
+                vk::ImageTiling::OPTIMAL => properties.optimal_tiling_features.contains(features),
+                _ => false,
+            }
+        })
+        .ok_or_else(|| anyhow!("Failed to find supported format."))
+}
+
+unsafe fn create_vk_image(
     device: &Device,
     physical_device: PhysicalDevice,
     instance: &Instance,
@@ -179,10 +249,10 @@ unsafe fn transition_image_layout(
                 vk::PipelineStageFlags::TRANSFER,
             ),
             (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-                vk::AccessFlags::empty(),
                 vk::AccessFlags::TRANSFER_WRITE,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::AccessFlags::SHADER_READ,
                 vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
             ),
             _ => return Err(anyhow!("Unsupported image layout transition")),
         };
@@ -267,25 +337,19 @@ pub unsafe fn create_image_view(
     device: &Device,
     image: vk::Image,
     format: vk::Format,
+    aspect_masks: vk::ImageAspectFlags,
 ) -> Result<vk::ImageView> {
     let subresource_range = vk::ImageSubresourceRange::builder()
-        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .aspect_mask(aspect_masks)
         .base_mip_level(0)
         .level_count(1)
         .base_array_layer(0)
         .layer_count(1);
 
-    let components = vk::ComponentMapping::builder()
-        .r(vk::ComponentSwizzle::IDENTITY)
-        .g(vk::ComponentSwizzle::IDENTITY)
-        .b(vk::ComponentSwizzle::IDENTITY)
-        .a(vk::ComponentSwizzle::IDENTITY);
-
     let info = vk::ImageViewCreateInfo::builder()
         .image(image)
         .view_type(vk::ImageViewType::_2D)
-        .format(vk::Format::R8G8B8A8_SRGB)
-        .components(components)
+        .format(format)
         .subresource_range(subresource_range);
 
     Ok(device.create_image_view(&info, None)?)

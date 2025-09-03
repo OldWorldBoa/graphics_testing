@@ -33,8 +33,8 @@ use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::pick_physical_device;
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
-use crate::world::scene::Scene;
 use crate::world::scene::{create_scene, load_images};
+use crate::world::scene::{load_depth_images, Scene};
 use crate::world::uniform::UniformBufferObject;
 
 /// Our Vulkan app.
@@ -122,6 +122,7 @@ impl App {
         infrastructure.render_pass = create_render_pass(
             &instance,
             &device,
+            infrastructure.physical_device,
             infrastructure.swapchain_info.swapchain_format,
         )?;
 
@@ -135,13 +136,6 @@ impl App {
         )?;
         infrastructure.pipeline_layout = pipeline_layout;
         infrastructure.pipeline = pipeline;
-        infrastructure.framebuffers = create_framebuffers(
-            &device,
-            infrastructure.render_pass,
-            &infrastructure.swapchain_info.swapchain_image_views,
-            infrastructure.swapchain_info.swapchain_extent.height,
-            infrastructure.swapchain_info.swapchain_extent.width,
-        )?;
         infrastructure.command_pool = create_command_pool(
             &instance,
             &device,
@@ -154,6 +148,16 @@ impl App {
                 / infrastructure.swapchain_info.swapchain_extent.height as f32,
         );
 
+        load_depth_images(
+            &mut scene.scene_data,
+            &device,
+            &instance,
+            infrastructure.physical_device,
+            infrastructure.command_pool,
+            infrastructure.graphics_queue,
+            infrastructure.swapchain_info.swapchain_extent,
+        )?;
+
         load_images(
             &mut scene.scene_data,
             &device,
@@ -163,6 +167,20 @@ impl App {
             infrastructure.graphics_queue,
         )?;
 
+        match scene.scene_data.depth_image {
+            None => panic!("Depth image not created"),
+            Some(e) => {
+                infrastructure.framebuffers = create_framebuffers(
+                    &device,
+                    infrastructure.render_pass,
+                    &infrastructure.swapchain_info.swapchain_image_views,
+                    e.1,
+                    infrastructure.swapchain_info.swapchain_extent.height,
+                    infrastructure.swapchain_info.swapchain_extent.width,
+                )?;
+            }
+        }
+
         infrastructure.texture_sampler = create_texture_sampler(&device)?;
 
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
@@ -171,7 +189,7 @@ impl App {
             infrastructure.command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
-            scene.scene_data.vertex_data,
+            &scene.scene_data.vertex_data,
         )?;
         infrastructure.vertex_buffer = vertex_buffer;
         infrastructure.vertex_buffer_memory = vertex_buffer_memory;
@@ -182,7 +200,7 @@ impl App {
             infrastructure.command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
-            scene.scene_data.vertex_indices,
+            &scene.scene_data.vertex_indices,
         )?;
         infrastructure.index_buffer = index_buffer;
         infrastructure.index_buffer_memory = index_buffer_memory;
@@ -334,6 +352,7 @@ impl App {
         self.infrastructure.render_pass = create_render_pass(
             &self.instance,
             &self.device,
+            self.infrastructure.physical_device,
             self.infrastructure.swapchain_info.swapchain_format,
         )?;
 
@@ -346,13 +365,29 @@ impl App {
         self.infrastructure.pipeline = pipeline;
         self.infrastructure.pipeline_layout = pipeline_layout;
 
-        self.infrastructure.framebuffers = create_framebuffers(
+        load_depth_images(
+            &mut self.scene.scene_data,
             &self.device,
-            self.infrastructure.render_pass,
-            &self.infrastructure.swapchain_info.swapchain_image_views,
-            self.infrastructure.swapchain_info.swapchain_extent.height,
-            self.infrastructure.swapchain_info.swapchain_extent.width,
+            &self.instance,
+            self.infrastructure.physical_device,
+            self.infrastructure.command_pool,
+            self.infrastructure.graphics_queue,
+            self.infrastructure.swapchain_info.swapchain_extent,
         )?;
+
+        match self.scene.scene_data.depth_image {
+            None => panic!("Depth image not created"),
+            Some(e) => {
+                self.infrastructure.framebuffers = create_framebuffers(
+                    &self.device,
+                    self.infrastructure.render_pass,
+                    &self.infrastructure.swapchain_info.swapchain_image_views,
+                    e.1,
+                    self.infrastructure.swapchain_info.swapchain_extent.height,
+                    self.infrastructure.swapchain_info.swapchain_extent.width,
+                )?;
+            }
+        }
 
         let uniform_infrastructure = create_uniform_buffers(
             &self.instance,
@@ -461,6 +496,16 @@ impl App {
         self.device.destroy_descriptor_pool(self.infrastructure.descriptor_pool, None);
         self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
         self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
+
+        match self.scene.scene_data.depth_image {
+            None => panic!("Depth image not created"),
+            Some(e) => {
+                self.device.destroy_image_view(e.1, None);
+                self.device.free_memory(e.2, None);
+                self.device.destroy_image(e.0, None);
+            }
+        }
+
         self.infrastructure.framebuffers.iter().for_each(|f| self.device.destroy_framebuffer(*f, None));
         self.device.destroy_pipeline(self.infrastructure.pipeline, None);
         self.device.destroy_pipeline_layout(self.infrastructure.pipeline_layout, None);

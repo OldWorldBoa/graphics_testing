@@ -10,14 +10,15 @@ use vulkanalia::Device;
 pub unsafe fn create_framebuffers(
     device: &Device,
     render_pass: vk::RenderPass,
-    image_views: &Vec<vk::ImageView>,
+    image_views: &[vk::ImageView],
+    depth_view: vk::ImageView,
     height: u32,
     width: u32,
 ) -> Result<Vec<vk::Framebuffer>> {
     Ok(image_views
         .iter()
         .map(|i| {
-            let attachments = &[*i];
+            let attachments = &[*i, depth_view];
             let create_info = vk::FramebufferCreateInfo::builder()
                 .render_pass(render_pass)
                 .attachments(attachments)

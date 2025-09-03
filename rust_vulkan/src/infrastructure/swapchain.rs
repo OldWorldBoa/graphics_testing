@@ -10,6 +10,41 @@ use crate::infrastructure::image::create_image_view;
 use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 
 //================================================
+// Structs
+//================================================
+#[derive(Clone, Debug, Default)]
+pub struct SwapchainInfo {
+    pub swapchain_format: vk::Format,
+    pub swapchain_extent: vk::Extent2D,
+    pub swapchain: vk::SwapchainKHR,
+    pub swapchain_images: Vec<vk::Image>,
+    pub swapchain_image_views: Vec<vk::ImageView>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SwapchainSupport {
+    pub capabilities: vk::SurfaceCapabilitiesKHR,
+    pub formats: Vec<vk::SurfaceFormatKHR>,
+    pub present_modes: Vec<vk::PresentModeKHR>,
+}
+
+impl SwapchainSupport {
+    pub unsafe fn get(
+        instance: &Instance,
+        surface: SurfaceKHR,
+        physical_device: vk::PhysicalDevice,
+    ) -> Result<Self> {
+        Ok(Self {
+            capabilities: instance
+                .get_physical_device_surface_capabilities_khr(physical_device, surface)?,
+            formats: instance.get_physical_device_surface_formats_khr(physical_device, surface)?,
+            present_modes: instance
+                .get_physical_device_surface_present_modes_khr(physical_device, surface)?,
+        })
+    }
+}
+
+//================================================
 // Swapchain
 //================================================
 
@@ -119,41 +154,6 @@ pub unsafe fn create_swapchain_image_views(
 ) -> Result<Vec<vk::ImageView>> {
     swapchain_images
         .iter()
-        .map(|i| create_image_view(device, *i, format))
+        .map(|i| create_image_view(device, *i, format, vk::ImageAspectFlags::COLOR))
         .collect::<Result<Vec<_>, _>>()
-}
-
-//================================================
-// Structs
-//================================================
-#[derive(Clone, Debug, Default)]
-pub struct SwapchainInfo {
-    pub swapchain_format: vk::Format,
-    pub swapchain_extent: vk::Extent2D,
-    pub swapchain: vk::SwapchainKHR,
-    pub swapchain_images: Vec<vk::Image>,
-    pub swapchain_image_views: Vec<vk::ImageView>,
-}
-
-#[derive(Clone, Debug)]
-pub struct SwapchainSupport {
-    pub capabilities: vk::SurfaceCapabilitiesKHR,
-    pub formats: Vec<vk::SurfaceFormatKHR>,
-    pub present_modes: Vec<vk::PresentModeKHR>,
-}
-
-impl SwapchainSupport {
-    pub unsafe fn get(
-        instance: &Instance,
-        surface: SurfaceKHR,
-        physical_device: vk::PhysicalDevice,
-    ) -> Result<Self> {
-        Ok(Self {
-            capabilities: instance
-                .get_physical_device_surface_capabilities_khr(physical_device, surface)?,
-            formats: instance.get_physical_device_surface_formats_khr(physical_device, surface)?,
-            present_modes: instance
-                .get_physical_device_surface_present_modes_khr(physical_device, surface)?,
-        })
-    }
 }

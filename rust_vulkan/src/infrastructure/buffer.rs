@@ -18,7 +18,7 @@ pub unsafe fn create_vertex_buffer(
     command_pool: CommandPool,
     graphics_queue: vk::Queue,
     physical_device: PhysicalDevice,
-    vertices: [Vertex; 4],
+    vertices: &[Vertex],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
@@ -76,7 +76,7 @@ pub unsafe fn create_index_buffer(
     command_pool: CommandPool,
     graphics_queue: vk::Queue,
     physical_device: PhysicalDevice,
-    indices: [u16; 6],
+    indices: &[u16],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
