@@ -12,6 +12,10 @@ use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
 // Logical Device
 //================================================
 
+/// Creates the logical device
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_logical_device(
     entry: &Entry,
     instance: &Instance,
@@ -56,7 +60,9 @@ pub unsafe fn create_logical_device(
 
     // Features
 
-    let features = vk::PhysicalDeviceFeatures::builder();
+    let features = vk::PhysicalDeviceFeatures::builder()
+        .sampler_anisotropy(true)
+        .sample_rate_shading(true);
 
     // Create
 

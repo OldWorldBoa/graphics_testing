@@ -12,6 +12,10 @@ use crate::world::vertex::Vertex;
 // Buffers
 //================================================
 
+/// Creates buffers for vertices
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_vertex_buffer(
     instance: &Instance,
     device: &Device,
@@ -20,10 +24,9 @@ pub unsafe fn create_vertex_buffer(
     physical_device: PhysicalDevice,
     vertices: &[Vertex],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
-    // Create (staging)
-
     let size = (size_of::<Vertex>() * vertices.len()) as u64;
 
+    // Create staging buffers
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
@@ -34,7 +37,6 @@ pub unsafe fn create_vertex_buffer(
     )?;
 
     // Copy (staging)
-
     let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
 
     memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
@@ -42,7 +44,6 @@ pub unsafe fn create_vertex_buffer(
     device.unmap_memory(staging_buffer_memory);
 
     // Create (vertex)
-
     let (vertex_buffer, vertex_buffer_memory) = create_buffer(
         instance,
         device,
@@ -63,24 +64,27 @@ pub unsafe fn create_vertex_buffer(
     )?;
 
     // Cleanup
-
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
 
     Ok((vertex_buffer, vertex_buffer_memory))
 }
 
+/// Creates buffers for indices
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_index_buffer(
     instance: &Instance,
     device: &Device,
     command_pool: CommandPool,
     graphics_queue: vk::Queue,
     physical_device: PhysicalDevice,
-    indices: &[u16],
+    indices: &[u32],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     // Create (staging)
 
-    let size = (size_of::<u16>() * indices.len()) as u64;
+    let size = (size_of::<u32>() * indices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -128,6 +132,10 @@ pub unsafe fn create_index_buffer(
     Ok((index_buffer, index_buffer_memory))
 }
 
+/// Creates buffers for uniforms
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_uniform_buffers(
     instance: &Instance,
     device: &Device,
@@ -154,6 +162,10 @@ pub unsafe fn create_uniform_buffers(
 // Shared (Buffers)
 //================================================
 
+/// Creates generic buffers
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_buffer(
     instance: &Instance,
     device: &Device,
@@ -209,6 +221,10 @@ unsafe fn copy_buffer(
     Ok(())
 }
 
+/// Gets the memory type index
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn get_memory_type_index(
     instance: &Instance,
     physical_device: PhysicalDevice,

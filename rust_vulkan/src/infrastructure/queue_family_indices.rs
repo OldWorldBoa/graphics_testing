@@ -11,6 +11,10 @@ pub struct QueueFamilyIndices {
 }
 
 impl QueueFamilyIndices {
+    /// Gets a queue family indices
+    ///
+    /// # Safety
+    /// Check the vulkan docs for safety info
     pub unsafe fn get(
         instance: &Instance,
         surface: SurfaceKHR,

@@ -27,8 +27,11 @@ pub struct SwapchainSupport {
     pub formats: Vec<vk::SurfaceFormatKHR>,
     pub present_modes: Vec<vk::PresentModeKHR>,
 }
-
 impl SwapchainSupport {
+    /// Gets the swapchain support
+    ///
+    /// # Safety
+    /// Check the vulkan docs for safety info
     pub unsafe fn get(
         instance: &Instance,
         surface: SurfaceKHR,
@@ -48,6 +51,10 @@ impl SwapchainSupport {
 // Swapchain
 //================================================
 
+/// Creates the swapchain
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_swapchain(
     window: &Window,
     instance: &Instance,
@@ -147,6 +154,10 @@ fn get_swapchain_extent(window: &Window, capabilities: vk::SurfaceCapabilitiesKH
     }
 }
 
+/// Creates the swapchain image views
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_swapchain_image_views(
     device: &Device,
     swapchain_images: &[vk::Image],
@@ -154,6 +165,6 @@ pub unsafe fn create_swapchain_image_views(
 ) -> Result<Vec<vk::ImageView>> {
     swapchain_images
         .iter()
-        .map(|i| create_image_view(device, *i, format, vk::ImageAspectFlags::COLOR))
+        .map(|i| create_image_view(device, *i, format, vk::ImageAspectFlags::COLOR, 1))
         .collect::<Result<Vec<_>, _>>()
 }

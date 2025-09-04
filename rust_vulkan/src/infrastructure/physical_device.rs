@@ -13,6 +13,10 @@ use crate::infrastructure::swapchain::SwapchainSupport;
 // Physical Device
 //================================================
 
+/// Picks the physical device
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn pick_physical_device(
     instance: &Instance,
     surface: SurfaceKHR,
@@ -71,4 +75,30 @@ unsafe fn check_physical_device_extensions(
             "Missing required device extensions."
         )))
     }
+}
+
+/// Gets the max msaa samples supported for the device
+///
+/// # Safety
+/// Check the vulkan docs for safety info
+pub unsafe fn get_max_msaa_samples(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+) -> vk::SampleCountFlags {
+    let properties = instance.get_physical_device_properties(physical_device);
+    let counts = properties.limits.framebuffer_color_sample_counts
+        & properties.limits.framebuffer_depth_sample_counts;
+
+    [
+        vk::SampleCountFlags::_64,
+        vk::SampleCountFlags::_32,
+        vk::SampleCountFlags::_16,
+        vk::SampleCountFlags::_8,
+        vk::SampleCountFlags::_4,
+        vk::SampleCountFlags::_2,
+    ]
+    .iter()
+    .cloned()
+    .find(|c| counts.contains(*c))
+    .unwrap_or(vk::SampleCountFlags::_1)
 }

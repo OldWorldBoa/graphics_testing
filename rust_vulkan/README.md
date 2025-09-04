@@ -57,4 +57,15 @@ The chapters completed from the [tutorial](https://kylemayes.github.io/vulkanali
 
 ### Chapter 9: Model
 31. Done - Depth buffering
-32. Loading models
+32. Done - Loading models
+
+### Chapter 10: Rendering Quality
+33. Done - Generating mipmaps
+34. Done - Multisampling
+
+### Chapter 11: Dynamic Scenes
+35. Push constants
+36. Recycling command buffers
+37. Secondary command buffers
+
+38. Conclusion

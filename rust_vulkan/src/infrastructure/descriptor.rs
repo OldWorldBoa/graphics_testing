@@ -2,8 +2,15 @@ use anyhow::{anyhow, Result};
 use vk::DescriptorPool;
 use vulkanalia::{prelude::v1_0::*, vk::DescriptorSet};
 
-use crate::{infrastructure::error::SuitabilityError, world::uniform::UniformBufferObject};
+use crate::{
+    infrastructure::{error::SuitabilityError, image::ImageBundle},
+    world::uniform::UniformBufferObject,
+};
 
+/// Creates the descriptor set layout
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::DescriptorSetLayout> {
     let ubo_binding = vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
@@ -23,6 +30,10 @@ pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::Descri
     Ok(device.create_descriptor_set_layout(&info, None)?)
 }
 
+/// Creates the descriptor pool
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_descriptor_pool(
     device: &Device,
     swapchain_image_len: u32,
@@ -43,11 +54,15 @@ pub unsafe fn create_descriptor_pool(
     Ok(device.create_descriptor_pool(&info, None)?)
 }
 
+/// Creates the descriptor sets
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_descriptor_sets(
     device: &Device,
     texture_sampler: vk::Sampler,
     uniform_buffers: &[vk::Buffer],
-    image_buffers: &[(vk::Image, vk::ImageView, vk::DeviceMemory)],
+    image_buffers: &[ImageBundle],
     layout: vk::DescriptorSetLayout,
     pool: vk::DescriptorPool,
     swapchain_image_len: usize,
@@ -73,10 +88,10 @@ pub unsafe fn create_descriptor_sets(
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(buffer_info);
 
-        if image_buffers.len() > 0 {
+        if !image_buffers.is_empty() {
             let image_info = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image_view(image_buffers[0].1)
+                .image_view(image_buffers[0].image_view)
                 .sampler(texture_sampler);
 
             let image_infos = &[image_info];

@@ -4,7 +4,7 @@ pub mod commands;
 pub mod constants;
 pub mod descriptor;
 pub mod error;
-pub mod framebuffer;
+pub mod frame;
 pub mod image;
 pub mod instance;
 pub mod logical_device;

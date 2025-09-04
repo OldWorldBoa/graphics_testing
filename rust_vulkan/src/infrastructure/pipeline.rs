@@ -9,17 +9,32 @@ use crate::world::vertex::Vertex;
 // Pipeline
 //================================================
 
+/// Create a render pass
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_render_pass(
     instance: &Instance,
     device: &Device,
     physical_device: vk::PhysicalDevice,
     swapchain_format: vk::Format,
+    msaa_samples: vk::SampleCountFlags,
 ) -> Result<vk::RenderPass> {
     // Attachments
-    let color_attachment = vk::AttachmentDescription::builder()
+    let color_sampling_attachment = vk::AttachmentDescription::builder()
+        .format(swapchain_format)
+        .samples(msaa_samples)
+        .load_op(vk::AttachmentLoadOp::CLEAR)
+        .store_op(vk::AttachmentStoreOp::STORE)
+        .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+        .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+        .initial_layout(vk::ImageLayout::UNDEFINED)
+        .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+
+    let color_resolve_attachment = vk::AttachmentDescription::builder()
         .format(swapchain_format)
         .samples(vk::SampleCountFlags::_1)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
+        .load_op(vk::AttachmentLoadOp::DONT_CARE)
         .store_op(vk::AttachmentStoreOp::STORE)
         .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
         .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -28,7 +43,7 @@ pub unsafe fn create_render_pass(
 
     let depth_stencil_attachment = vk::AttachmentDescription::builder()
         .format(get_depth_format(instance, physical_device)?)
-        .samples(vk::SampleCountFlags::_1)
+        .samples(msaa_samples)
         .load_op(vk::AttachmentLoadOp::CLEAR)
         .store_op(vk::AttachmentStoreOp::DONT_CARE)
         .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
@@ -37,7 +52,7 @@ pub unsafe fn create_render_pass(
         .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
     // Subpasses
-    let color_attachment_ref = vk::AttachmentReference::builder()
+    let color_sampling_attachment_ref = vk::AttachmentReference::builder()
         .attachment(0)
         .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
 
@@ -45,11 +60,17 @@ pub unsafe fn create_render_pass(
         .attachment(1)
         .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-    let color_attachments = &[color_attachment_ref];
+    let color_resolve_attachment_ref = vk::AttachmentReference::builder()
+        .attachment(2)
+        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+
+    let color_sampling_attachments = &[color_sampling_attachment_ref];
+    let color_resolve_attachments = &[color_resolve_attachment_ref];
     let subpass = vk::SubpassDescription::builder()
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(color_attachments)
-        .depth_stencil_attachment(&depth_stencil_attachment_ref);
+        .color_attachments(color_sampling_attachments)
+        .depth_stencil_attachment(&depth_stencil_attachment_ref)
+        .resolve_attachments(color_resolve_attachments);
 
     // Dependencies
     let dependency = vk::SubpassDependency::builder()
@@ -70,7 +91,11 @@ pub unsafe fn create_render_pass(
         );
 
     // Create
-    let attachments = &[color_attachment, depth_stencil_attachment];
+    let attachments = &[
+        color_sampling_attachment,
+        depth_stencil_attachment,
+        color_resolve_attachment,
+    ];
     let subpasses = &[subpass];
     let dependencies = &[dependency];
     let info = vk::RenderPassCreateInfo::builder()
@@ -81,11 +106,16 @@ pub unsafe fn create_render_pass(
     Ok(device.create_render_pass(&info, None)?)
 }
 
+/// Create a pipeline
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_pipeline(
     device: &Device,
     render_pass: vk::RenderPass,
     descriptor_set_layout: vk::DescriptorSetLayout,
     extent: vk::Extent2D,
+    msaa_samples: vk::SampleCountFlags,
 ) -> Result<(vk::PipelineLayout, vk::Pipeline)> {
     // Stages
     let vert = include_bytes!("../../shaders/vert.spv");
@@ -147,8 +177,9 @@ pub unsafe fn create_pipeline(
 
     // Multisample State
     let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
-        .sample_shading_enable(false)
-        .rasterization_samples(vk::SampleCountFlags::_1);
+        .sample_shading_enable(true)
+        .min_sample_shading(0.2)
+        .rasterization_samples(msaa_samples);
 
     //Depth Stencil State
     let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder()

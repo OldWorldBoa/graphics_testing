@@ -16,6 +16,11 @@ use crate::infrastructure::constants::{
 //================================================
 // Instance
 //================================================
+
+/// Creates an instance
+///
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_instance(
     window: &Window,
     entry: &Entry,
