@@ -29,7 +29,6 @@ use crate::infrastructure::descriptor::{
     create_descriptor_pool, create_descriptor_set_layout, create_descriptor_sets,
 };
 use crate::infrastructure::frame::{create_framebundles, FrameBundle};
-use crate::infrastructure::framebuffer::create_framebuffers;
 use crate::infrastructure::image::create_texture_sampler;
 use crate::infrastructure::instance::create_instance;
 use crate::infrastructure::logical_device::create_logical_device;
@@ -154,7 +153,6 @@ impl App {
             infrastructure.swapchain_info.swapchain_images.len(),
         )?;
         infrastructure.global_command_pool = main_command_pool;
-        infrastructure.global_command_buffers = create_command_buffers();
 
         let mut scene = create_scene(
             infrastructure.swapchain_info.swapchain_extent.width as f32
@@ -512,8 +510,7 @@ impl App {
         self.device.destroy_buffer(self.infrastructure.index_buffer, None);
         self.device.free_memory(self.infrastructure.vertex_buffer_memory, None);
         self.device.destroy_buffer(self.infrastructure.vertex_buffer, None);
-        self.device.destroy_command_pool(self.infrastructure.command_pool, None);
-        self.infrastructure.command_pools.iter().for_each(|f| self.device.destroy_command_pool(*f, None));
+        self.device.destroy_command_pool(self.infrastructure.global_command_pool, None);
         self.device.destroy_descriptor_set_layout(self.infrastructure.descriptor_set_layout, None);
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.infrastructure.surface, None);
@@ -528,7 +525,6 @@ impl App {
     /// Destroys the parts of our Vulkan app related to the swapchain.
     #[rustfmt::skip]
     unsafe fn destroy_swapchain(&mut self) {
-        self.device.free_command_buffers(self.infrastructure.command_pool, &self.infrastructure.command_buffers);
         self.device.destroy_descriptor_pool(self.infrastructure.descriptor_pool, None);
         self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
         self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
@@ -551,7 +547,12 @@ impl App {
             }
         }
 
-        self.infrastructure.framebuffers.iter().for_each(|f| self.device.destroy_framebuffer(*f, None));
+        self.infrastructure.framebundles.iter().for_each(|f| {
+            self.device.free_command_buffers(f.command_pool, &f.command_buffers);
+            self.device.destroy_command_pool(f.command_pool, None);
+            self.device.destroy_framebuffer(f.frame_buffer, None);
+        });
+
         self.device.destroy_pipeline(self.infrastructure.pipeline, None);
         self.device.destroy_pipeline_layout(self.infrastructure.pipeline_layout, None);
         self.device.destroy_render_pass(self.infrastructure.render_pass, None);
