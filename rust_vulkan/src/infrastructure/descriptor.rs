@@ -62,7 +62,7 @@ pub unsafe fn create_descriptor_sets(
     device: &Device,
     texture_sampler: vk::Sampler,
     uniform_buffers: &[vk::Buffer],
-    image_buffers: &[ImageBundle],
+    texture_bundle: &ImageBundle,
     layout: vk::DescriptorSetLayout,
     pool: vk::DescriptorPool,
     swapchain_image_len: usize,
@@ -88,29 +88,20 @@ pub unsafe fn create_descriptor_sets(
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(buffer_info);
 
-        if !image_buffers.is_empty() {
-            let image_info = vk::DescriptorImageInfo::builder()
-                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image_view(image_buffers[0].image_view)
-                .sampler(texture_sampler);
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(texture_bundle.image_view)
+            .sampler(texture_sampler);
 
-            let image_infos = &[image_info];
-            let sampler_write = vk::WriteDescriptorSet::builder()
-                .dst_set(desc_sets[i])
-                .dst_binding(1)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(image_infos);
+        let image_infos = &[image_info];
+        let sampler_write = vk::WriteDescriptorSet::builder()
+            .dst_set(desc_sets[i])
+            .dst_binding(1)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(image_infos);
 
-            device.update_descriptor_sets(
-                &[ubo_write, sampler_write],
-                &[] as &[vk::CopyDescriptorSet],
-            );
-        } else {
-            return Err(anyhow!(SuitabilityError(
-                "Unable to build descriptor sets without image_buffers."
-            )));
-        }
+        device.update_descriptor_sets(&[ubo_write, sampler_write], &[] as &[vk::CopyDescriptorSet]);
     }
 
     Ok(desc_sets)

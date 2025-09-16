@@ -15,8 +15,11 @@ pub struct FrameBundle {
     pub frame_buffer: vk::Framebuffer,
     pub command_pool: vk::CommandPool,
     pub command_buffers: Vec<vk::CommandBuffer>,
+    pub secondary_command_buffers: Vec<vk::CommandBuffer>,
 }
 
+/// # Safety
+/// Check the vulkan docs for safety info
 pub unsafe fn create_framebundles(
     instance: &Instance,
     device: &Device,
@@ -26,11 +29,24 @@ pub unsafe fn create_framebundles(
     swapchain_info: &SwapchainInfo,
     depth_view: vk::ImageView,
     sampling_view: vk::ImageView,
+    num_models: u32,
 ) -> Result<Vec<FrameBundle>> {
     let mut framebundles = vec![];
 
     for swapchain_view in swapchain_info.swapchain_image_views.iter() {
         let command_pool = create_command_pool(instance, device, surface, physical_device)?;
+        let mut secondary_command_buffers = vec![];
+
+        for i in 0..num_models {
+            let allocate_info = vk::CommandBufferAllocateInfo::builder()
+                .command_pool(command_pool)
+                .level(vk::CommandBufferLevel::SECONDARY)
+                .command_buffer_count(1);
+
+            let command_buffer = device.allocate_command_buffers(&allocate_info)?[0];
+
+            secondary_command_buffers.push(command_buffer);
+        }
 
         framebundles.push(FrameBundle {
             frame_buffer: create_framebuffer(
@@ -44,6 +60,7 @@ pub unsafe fn create_framebundles(
             )?,
             command_pool,
             command_buffers: vec![create_command_buffer(device, command_pool)?],
+            secondary_command_buffers,
         });
     }
 

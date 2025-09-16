@@ -19,24 +19,27 @@ use vulkanalia::window as vk_window;
 use winit::window::Window;
 
 use crate::infrastructure::buffer::{
-    create_index_buffer, create_uniform_buffers, create_vertex_buffer,
+    create_buffer, create_index_buffer, create_uniform_buffers, create_vertex_buffer,
+    update_vertex_buffer,
 };
-use crate::infrastructure::commands::{
-    create_command_buffers, create_command_pools, update_command_buffer,
-};
+use crate::infrastructure::commands::{create_command_pool, update_command_buffer};
 use crate::infrastructure::constants::{MAX_FRAMES_IN_FLIGHT, VALIDATION_ENABLED};
 use crate::infrastructure::descriptor::{
     create_descriptor_pool, create_descriptor_set_layout, create_descriptor_sets,
 };
 use crate::infrastructure::frame::{create_framebundles, FrameBundle};
-use crate::infrastructure::image::create_texture_sampler;
+use crate::infrastructure::image::{
+    create_depth_image, create_sampling_image, create_texture_image, create_texture_sampler,
+    ImageBundle,
+};
 use crate::infrastructure::instance::create_instance;
 use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::{get_max_msaa_samples, pick_physical_device};
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
-use crate::world::scene::{create_scene, Scene};
+use crate::world::scene::Scene;
 use crate::world::uniform::UniformBufferObject;
+use crate::world::vertex::Vertex;
 
 /// Our Vulkan app.
 #[derive(Clone, Debug)]
@@ -86,6 +89,11 @@ pub struct AppInfrastructure {
     pub index_buffer_memory: vk::DeviceMemory,
     pub uniform_buffers: Vec<vk::Buffer>,
     pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
+
+    // Image Bundles
+    pub color_sample_bundle: ImageBundle,
+    pub depth_bundle: ImageBundle,
+    pub texture_bundle: ImageBundle,
 
     // Sync Objects
     pub image_available_semaphores: Vec<vk::Semaphore>,
@@ -145,31 +153,27 @@ impl App {
         infrastructure.pipeline_layout = pipeline_layout;
         infrastructure.pipeline = pipeline;
 
-        let (main_command_pool, swapchain_command_pools) = create_command_pools(
+        infrastructure.global_command_pool = create_command_pool(
             &instance,
             &device,
             infrastructure.surface,
             infrastructure.physical_device,
-            infrastructure.swapchain_info.swapchain_images.len(),
         )?;
-        infrastructure.global_command_pool = main_command_pool;
 
-        let mut scene = create_scene(
+        let scene = Scene::create_scene(
             infrastructure.swapchain_info.swapchain_extent.width as f32
                 / infrastructure.swapchain_info.swapchain_extent.height as f32,
-        );
+        )?;
 
-        scene.load_model()?;
-
-        scene.load_sampling_image(
-            &device,
+        infrastructure.color_sample_bundle = create_sampling_image(
             &instance,
+            &device,
             infrastructure.physical_device,
             &infrastructure.swapchain_info,
             infrastructure.msaa_samples,
         )?;
 
-        scene.load_depth_image(
+        infrastructure.depth_bundle = create_depth_image(
             &device,
             &instance,
             infrastructure.physical_device,
@@ -178,7 +182,8 @@ impl App {
             infrastructure.swapchain_info.swapchain_extent,
         )?;
 
-        scene.load_images(
+        infrastructure.texture_bundle = create_texture_image(
+            &scene.scene_data.textures[0],
             &device,
             &instance,
             infrastructure.physical_device,
@@ -186,31 +191,20 @@ impl App {
             infrastructure.graphics_queue,
         )?;
 
-        match scene.scene_data.depth_image {
-            None => panic!("Depth image not created"),
-            Some(d) => match scene.scene_data.sampling_image {
-                None => panic!("Sampling image not created"),
-                Some(s) => {
-                    infrastructure.framebundles = create_framebundles(
-                        &instance,
-                        &device,
-                        infrastructure.surface,
-                        infrastructure.physical_device,
-                        infrastructure.render_pass,
-                        &infrastructure.swapchain_info,
-                        d.image_view,
-                        s.image_view,
-                    )?;
-                }
-            },
-        }
+        infrastructure.framebundles = create_framebundles(
+            &instance,
+            &device,
+            infrastructure.surface,
+            infrastructure.physical_device,
+            infrastructure.render_pass,
+            &infrastructure.swapchain_info,
+            infrastructure.depth_bundle.image_view,
+            infrastructure.color_sample_bundle.image_view,
+            3,
+        )?;
 
-        if !scene.scene_data.images.is_empty() {
-            infrastructure.texture_sampler =
-                create_texture_sampler(&device, scene.scene_data.images[0].mip_levels)?;
-        } else {
-            panic!("Textures not loaded");
-        }
+        infrastructure.texture_sampler =
+            create_texture_sampler(&device, infrastructure.texture_bundle.mip_levels)?;
 
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
             &instance,
@@ -258,7 +252,7 @@ impl App {
             &device,
             infrastructure.texture_sampler,
             &infrastructure.uniform_buffers,
-            &scene.scene_data.images,
+            &infrastructure.texture_bundle,
             infrastructure.descriptor_set_layout,
             infrastructure.descriptor_pool,
             infrastructure.swapchain_info.swapchain_images.len(),
@@ -312,17 +306,26 @@ impl App {
 
         self.infrastructure.images_in_flight[image_index] = in_flight_fence;
 
+        /*        update_vertex_buffer(
+            &self.scene.scene_data.vertex_data,
+            self.infrastructure.vertex_buffer,
+            &self.instance,
+            &self.device,
+            self.infrastructure.physical_device,
+            self.infrastructure.framebundles[image_index].command_pool,
+            self.infrastructure.graphics_queue,
+        )?;*/
         update_command_buffer(
             &self.device,
-            self.infrastructure.render_pass,
-            self.infrastructure.pipeline,
             self.infrastructure.pipeline_layout,
             self.infrastructure.vertex_buffer,
             self.infrastructure.index_buffer,
             self.infrastructure.descriptor_sets[image_index],
+            self.infrastructure.render_pass,
+            self.infrastructure.pipeline,
             self.infrastructure.swapchain_info.swapchain_extent,
-            self.scene.scene_data.vertex_indices.len() as u32,
             &self.infrastructure.framebundles[image_index],
+            &self.scene.scene_data,
         )?;
         self.update_uniform_buffer(image_index)?;
 
@@ -397,7 +400,15 @@ impl App {
         self.infrastructure.pipeline = pipeline;
         self.infrastructure.pipeline_layout = pipeline_layout;
 
-        self.scene.load_depth_image(
+        self.infrastructure.color_sample_bundle = create_sampling_image(
+            &self.instance,
+            &self.device,
+            self.infrastructure.physical_device,
+            &self.infrastructure.swapchain_info,
+            self.infrastructure.msaa_samples,
+        )?;
+
+        self.infrastructure.depth_bundle = create_depth_image(
             &self.device,
             &self.instance,
             self.infrastructure.physical_device,
@@ -406,32 +417,26 @@ impl App {
             self.infrastructure.swapchain_info.swapchain_extent,
         )?;
 
-        self.scene.load_sampling_image(
+        self.infrastructure.texture_bundle = create_texture_image(
+            &self.scene.scene_data.textures[0],
             &self.device,
             &self.instance,
             self.infrastructure.physical_device,
-            &self.infrastructure.swapchain_info,
-            self.infrastructure.msaa_samples,
+            self.infrastructure.global_command_pool,
+            self.infrastructure.graphics_queue,
         )?;
 
-        match &self.scene.scene_data.depth_image {
-            None => panic!("Depth image not created"),
-            Some(d) => match &self.scene.scene_data.sampling_image {
-                None => panic!("Sampling image not created"),
-                Some(s) => {
-                    self.infrastructure.framebundles = create_framebundles(
-                        &self.instance,
-                        &self.device,
-                        self.infrastructure.surface,
-                        self.infrastructure.physical_device,
-                        self.infrastructure.render_pass,
-                        &self.infrastructure.swapchain_info,
-                        d.image_view,
-                        s.image_view,
-                    )?;
-                }
-            },
-        }
+        self.infrastructure.framebundles = create_framebundles(
+            &self.instance,
+            &self.device,
+            self.infrastructure.surface,
+            self.infrastructure.physical_device,
+            self.infrastructure.render_pass,
+            &self.infrastructure.swapchain_info,
+            self.infrastructure.depth_bundle.image_view,
+            self.infrastructure.color_sample_bundle.image_view,
+            3,
+        )?;
 
         let uniform_infrastructure = create_uniform_buffers(
             &self.instance,
@@ -457,7 +462,7 @@ impl App {
             &self.device,
             self.infrastructure.texture_sampler,
             &self.infrastructure.uniform_buffers,
-            &self.scene.scene_data.images,
+            &self.infrastructure.texture_bundle,
             self.infrastructure.descriptor_set_layout,
             self.infrastructure.descriptor_pool,
             self.infrastructure.swapchain_info.swapchain_images.len(),
@@ -498,11 +503,6 @@ impl App {
         self.destroy_swapchain();
 
         self.device.destroy_sampler(self.infrastructure.texture_sampler, None);
-        self.scene.scene_data.images.iter().for_each(|i| {
-            self.device.destroy_image(i.image, None);
-            self.device.destroy_image_view(i.image_view, None);
-            self.device.free_memory(i.image_memory, None);
-        });
         self.infrastructure.in_flight_fences.iter().for_each(|f| self.device.destroy_fence(*f, None));
         self.infrastructure.render_finished_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
         self.infrastructure.image_available_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
@@ -529,23 +529,17 @@ impl App {
         self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
         self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
 
-        match &self.scene.scene_data.sampling_image {
-            None => panic!("Sampling image not created"),
-            Some(e) => {
-                self.device.destroy_image_view(e.image_view, None);
-                self.device.free_memory(e.image_memory, None);
-                self.device.destroy_image(e.image, None);
-            }
-        }
+        self.device.destroy_image(self.infrastructure.color_sample_bundle.image, None);
+        self.device.destroy_image_view(self.infrastructure.color_sample_bundle.image_view, None);
+        self.device.free_memory(self.infrastructure.color_sample_bundle.image_memory, None);
 
-        match &self.scene.scene_data.depth_image {
-            None => panic!("Depth image not created"),
-            Some(e) => {
-                self.device.destroy_image_view(e.image_view, None);
-                self.device.free_memory(e.image_memory, None);
-                self.device.destroy_image(e.image, None);
-            }
-        }
+        self.device.destroy_image(self.infrastructure.texture_bundle.image, None);
+        self.device.destroy_image_view(self.infrastructure.texture_bundle.image_view, None);
+        self.device.free_memory(self.infrastructure.texture_bundle.image_memory, None);
+
+        self.device.destroy_image(self.infrastructure.depth_bundle.image, None);
+        self.device.destroy_image_view(self.infrastructure.depth_bundle.image_view, None);
+        self.device.free_memory(self.infrastructure.depth_bundle.image_memory, None);
 
         self.infrastructure.framebundles.iter().for_each(|f| {
             self.device.free_command_buffers(f.command_pool, &f.command_buffers);

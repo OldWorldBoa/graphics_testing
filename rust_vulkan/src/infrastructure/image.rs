@@ -3,15 +3,18 @@ use png;
 use std::fs::File;
 use std::ptr::copy_nonoverlapping as memcpy;
 use vk::PhysicalDevice;
-use vulkanalia::{prelude::v1_0::*, vk::Image};
+use vulkanalia::prelude::v1_0::*;
 
-use crate::infrastructure::{
-    buffer::{create_buffer, get_memory_type_index},
-    commands::{begin_single_time_commands, end_single_time_commands},
-    swapchain::SwapchainInfo,
+use crate::{
+    infrastructure::{
+        buffer::{create_buffer, get_memory_type_index},
+        commands::{begin_single_time_commands, end_single_time_commands},
+        swapchain::SwapchainInfo,
+    },
+    world::scene::Texture,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ImageBundle {
     pub mip_levels: u32,
     pub image: vk::Image,
@@ -49,46 +52,41 @@ pub unsafe fn create_texture_sampler(device: &Device, mip_levels: u32) -> Result
 /// # Safety
 /// Check the vulkan docs for safety info
 pub unsafe fn create_texture_image(
-    path: &str,
+    texture: &Texture,
     device: &Device,
     instance: &Instance,
     physical_device: PhysicalDevice,
     command_pool: vk::CommandPool,
     graphics_queue: vk::Queue,
 ) -> Result<ImageBundle> {
-    let image = File::open(path)?;
-
-    let decoder = png::Decoder::new(image);
-    let mut reader = decoder.read_info()?;
-    let mut pixels = vec![0; reader.info().raw_bytes()];
-    reader.next_frame(&mut pixels)?;
-
-    let size = reader.info().raw_bytes() as u64;
-    let (width, height) = reader.info().size();
-
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
         physical_device,
-        size,
+        texture.size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
     )?;
 
-    let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
+    let memory = device.map_memory(
+        staging_buffer_memory,
+        0,
+        texture.size,
+        vk::MemoryMapFlags::empty(),
+    )?;
 
-    memcpy(pixels.as_ptr(), memory.cast(), pixels.len());
+    memcpy(texture.pixels.as_ptr(), memory.cast(), texture.pixels.len());
 
     device.unmap_memory(staging_buffer_memory);
 
-    let mip_levels = (width.max(height) as f32).log2().floor() as u32 + 1;
+    let mip_levels = (texture.width.max(texture.height) as f32).log2().floor() as u32 + 1;
     let format = vk::Format::R8G8B8A8_SRGB;
     let (image, image_memory) = create_vk_image(
         device,
         physical_device,
         instance,
-        width,
-        height,
+        texture.width,
+        texture.height,
         mip_levels,
         format,
         vk::SampleCountFlags::_1,
@@ -116,8 +114,8 @@ pub unsafe fn create_texture_image(
         graphics_queue,
         staging_buffer,
         image,
-        width,
-        height,
+        texture.width,
+        texture.height,
     )?;
 
     generate_mipmaps(
@@ -128,8 +126,8 @@ pub unsafe fn create_texture_image(
         physical_device,
         format,
         image,
-        width,
-        height,
+        texture.width,
+        texture.height,
         mip_levels,
     )?;
 
