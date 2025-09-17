@@ -19,8 +19,7 @@ use vulkanalia::window as vk_window;
 use winit::window::Window;
 
 use crate::infrastructure::buffer::{
-    create_buffer, create_index_buffer, create_uniform_buffers, create_vertex_buffer,
-    update_vertex_buffer,
+    create_index_buffer, create_uniform_buffers, create_vertex_buffer, update_vertex_buffer,
 };
 use crate::infrastructure::commands::{create_command_pool, update_command_buffer};
 use crate::infrastructure::constants::{MAX_FRAMES_IN_FLIGHT, VALIDATION_ENABLED};
@@ -39,7 +38,6 @@ use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
 use crate::world::scene::Scene;
 use crate::world::uniform::UniformBufferObject;
-use crate::world::vertex::Vertex;
 
 /// Our Vulkan app.
 #[derive(Clone, Debug)]
@@ -180,10 +178,11 @@ impl App {
             infrastructure.global_command_pool,
             infrastructure.graphics_queue,
             infrastructure.swapchain_info.swapchain_extent,
+            infrastructure.msaa_samples,
         )?;
 
         infrastructure.texture_bundle = create_texture_image(
-            &scene.scene_data.textures[0],
+            &scene.scene_data.entities[0].texture,
             &device,
             &instance,
             infrastructure.physical_device,
@@ -212,7 +211,7 @@ impl App {
             infrastructure.global_command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
-            &scene.scene_data.vertex_data,
+            &scene.scene_data.entities[0].vertex_data,
         )?;
         infrastructure.vertex_buffer = vertex_buffer;
         infrastructure.vertex_buffer_memory = vertex_buffer_memory;
@@ -223,7 +222,7 @@ impl App {
             infrastructure.global_command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
-            &scene.scene_data.vertex_indices,
+            &scene.scene_data.entities[0].vertex_indices,
         )?;
         infrastructure.index_buffer = index_buffer;
         infrastructure.index_buffer_memory = index_buffer_memory;
@@ -276,9 +275,8 @@ impl App {
     /// # Safety
     /// Check the vulkan docs for safety info
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
-        for work in self.scene.automata.iter() {
-            work(&mut self.scene.scene_data)?;
-        }
+        self.scene.spinner.work(&mut self.scene.scene_data);
+        self.scene.mover.work(&mut self.scene.scene_data);
 
         let in_flight_fence = self.infrastructure.in_flight_fences[self.frame];
 
@@ -306,15 +304,15 @@ impl App {
 
         self.infrastructure.images_in_flight[image_index] = in_flight_fence;
 
-        /*        update_vertex_buffer(
-            &self.scene.scene_data.vertex_data,
+        update_vertex_buffer(
+            &self.scene.scene_data.entities[0].vertex_data,
             self.infrastructure.vertex_buffer,
             &self.instance,
             &self.device,
             self.infrastructure.physical_device,
             self.infrastructure.framebundles[image_index].command_pool,
             self.infrastructure.graphics_queue,
-        )?;*/
+        )?;
         update_command_buffer(
             &self.device,
             self.infrastructure.pipeline_layout,
@@ -415,10 +413,11 @@ impl App {
             self.infrastructure.global_command_pool,
             self.infrastructure.graphics_queue,
             self.infrastructure.swapchain_info.swapchain_extent,
+            self.infrastructure.msaa_samples,
         )?;
 
         self.infrastructure.texture_bundle = create_texture_image(
-            &self.scene.scene_data.textures[0],
+            &self.scene.scene_data.entities[0].texture,
             &self.device,
             &self.instance,
             self.infrastructure.physical_device,

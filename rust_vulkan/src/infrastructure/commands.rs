@@ -185,7 +185,7 @@ pub unsafe fn update_secondary_command_buffer(
     );
 
     let model_bytes = std::slice::from_raw_parts(
-        &scene_data.model as *const Mat4 as *const u8,
+        &scene_data.entities[0].transform as *const Mat4 as *const u8,
         size_of::<Mat4>(),
     );
 
@@ -201,11 +201,11 @@ pub unsafe fn update_secondary_command_buffer(
         pipeline_layout,
         vk::ShaderStageFlags::FRAGMENT,
         64,
-        &scene_data.opacity.to_ne_bytes()[..],
+        &scene_data.entities[0].opacity.to_ne_bytes()[..],
     );
     device.cmd_draw_indexed(
         command_buffer,
-        scene_data.vertex_indices.len() as u32,
+        scene_data.entities[0].vertex_indices.len() as u32,
         1,
         0,
         0,

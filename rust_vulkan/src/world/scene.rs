@@ -1,6 +1,5 @@
 use anyhow::Result;
 use cgmath::{point3, vec2, vec3, Deg};
-use rand::{rng, thread_rng};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
@@ -12,13 +11,17 @@ use crate::world::vertex::{Mat4, Vertex};
 
 #[derive(Debug, Clone)]
 pub struct Scene {
-    pub automata: Vec<fn(scene_data: &mut SceneData) -> Result<()>>,
+    // Automata
+    pub spinner: Spinner,
+    pub mover: Mover,
+
     pub scene_data: SceneData,
 }
 impl Scene {
-    pub fn create_scene(aspect_ratio: f32) -> Result<Scene> {
+    pub fn create_scene(aspect_ratio: f32) -> Result<Self> {
         Ok(Scene {
-            automata: vec![Spinner::work, Mover::work],
+            spinner: Spinner { last_time: 0f32 },
+            mover: Mover,
             scene_data: SceneData::create_scene_data(aspect_ratio)?,
         })
     }
@@ -33,23 +36,26 @@ pub struct Texture {
 }
 
 #[derive(Debug, Clone)]
+pub struct Entity {
+    pub transform: Mat4,
+    pub vertex_data: Vec<Vertex>,
+    pub vertex_indices: Vec<u32>,
+    pub texture: Texture,
+    pub opacity: f32,
+    pub mip_levels: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct SceneData {
     pub start: Instant,
     pub uniform_data: UniformBufferObject,
-    pub opacity: f32,
-    pub model: Mat4,
-    pub vertex_data: Vec<Vertex>,
-    pub vertex_indices: Vec<u32>,
-    pub textures: Vec<Texture>,
-    pub mip_levels: u32,
+    pub entities: Vec<Entity>,
 }
 impl SceneData {
     pub fn create_scene_data(aspect_ratio: f32) -> Result<Self> {
         // initialize scene data
-        let model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0));
-
         let view = Mat4::look_at_rh(
-            point3(2.0, 2.0, 2.0),
+            point3(6.0, 0.0, 2.0),
             point3(0.0, 0.0, 0.0),
             vec3(0.0, 0.0, 1.0),
         );
@@ -68,26 +74,54 @@ impl SceneData {
         let mut scene_data = SceneData {
             start: Instant::now(),
             uniform_data,
-            model,
-            opacity: 0.25,
-            vertex_data: vec![],
-            vertex_indices: vec![],
-            textures: vec![],
-            mip_levels: 1,
+            entities: vec![],
         };
 
-        scene_data.load_texture_images()?;
-        scene_data.load_model()?;
+        scene_data.load_entities()?;
 
         Ok(scene_data)
+    }
+
+    pub fn load_entities(&mut self) -> Result<()> {
+        let (vertex_data, vertex_indices) = self.load_model("resources/viking_room.obj")?;
+        self.entities.push(Entity {
+            transform: Mat4::from_translation(vec3(0.0, -1.25, 1.0)),
+            vertex_data,
+            vertex_indices,
+            texture: self.load_texture_image("resources/viking_room.png")?,
+            opacity: 0.25,
+            mip_levels: 1,
+        });
+
+        let (vertex_data, vertex_indices) = self.load_model("resources/viking_room.obj")?;
+        self.entities.push(Entity {
+            transform: Mat4::from_translation(vec3(0.0, -1.25, -1.0)),
+            vertex_data,
+            vertex_indices,
+            texture: self.load_texture_image("resources/viking_room.png")?,
+            opacity: 0.25,
+            mip_levels: 1,
+        });
+
+        let (vertex_data, vertex_indices) = self.load_model("resources/viking_room.obj")?;
+        self.entities.push(Entity {
+            transform: Mat4::from_translation(vec3(0.0, 1.25, 0.0)),
+            vertex_data,
+            vertex_indices,
+            texture: self.load_texture_image("resources/viking_room.png")?,
+            opacity: 0.25,
+            mip_levels: 1,
+        });
+
+        Ok(())
     }
 
     /// load scene images
     ///
     /// # Safety
     /// Check the vulkan docs for safety info
-    pub fn load_texture_images(&mut self) -> Result<()> {
-        let image = File::open("resources/viking_room.png")?;
+    pub fn load_texture_image(&self, path: &str) -> Result<Texture> {
+        let image = File::open(path)?;
 
         let decoder = png::Decoder::new(image);
         let mut reader = decoder.read_info()?;
@@ -97,26 +131,20 @@ impl SceneData {
         let size = reader.info().raw_bytes() as u64;
         let (width, height) = reader.info().size();
 
-        self.textures.push(Texture {
+        Ok(Texture {
             pixels,
             size,
             height,
             width,
-        });
-
-        Ok(())
+        })
     }
 
     /// load scene model
     ///
     /// # Safety
     /// Check the vulkan docs for safety info
-    pub fn load_model(&mut self) -> Result<()> {
-        let mut reader = BufReader::new(File::open("resources/viking_room.obj")?);
-
-        self.vertex_data.clear();
-        self.vertex_indices.clear();
-
+    pub fn load_model(&self, path: &str) -> Result<(Vec<Vertex>, Vec<u32>)> {
+        let mut reader = BufReader::new(File::open(path)?);
         let (models, _) = tobj::load_obj_buf(
             &mut reader,
             &tobj::LoadOptions {
@@ -127,6 +155,8 @@ impl SceneData {
         )?;
 
         let mut unique_vertices = HashMap::new();
+        let mut vertex_data = vec![];
+        let mut vertex_indices = vec![];
 
         for model in &models {
             for index in &model.mesh.indices {
@@ -146,16 +176,16 @@ impl SceneData {
                 );
 
                 if let Some(index) = unique_vertices.get(&vertex) {
-                    self.vertex_indices.push(*index as u32);
+                    vertex_indices.push(*index as u32);
                 } else {
-                    let index = self.vertex_data.len();
+                    let index = vertex_data.len();
                     unique_vertices.insert(vertex, index);
-                    self.vertex_data.push(vertex);
-                    self.vertex_indices.push(index as u32);
+                    vertex_data.push(vertex);
+                    vertex_indices.push(index as u32);
                 }
             }
         }
 
-        Ok(())
+        Ok((vertex_data, vertex_indices))
     }
 }

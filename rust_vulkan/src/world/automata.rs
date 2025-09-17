@@ -1,4 +1,3 @@
-use anyhow::Result;
 use cgmath::{vec3, Deg};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -9,23 +8,30 @@ use crate::world::vertex::Mat4;
 /*
 * impls in here will be put in the Scene.automata list
 */
-
-pub struct Spinner;
+#[derive(Clone, Debug)]
+pub struct Spinner {
+    pub last_time: f32,
+}
 impl Spinner {
-    pub fn work(scene_data: &mut SceneData) -> Result<()> {
-        let time = scene_data.start.elapsed().as_secs_f32() / 3.0;
+    pub fn work(&mut self, scene_data: &mut SceneData) {
+        let time = scene_data.start.elapsed().as_secs_f32();
+        let delta = time - self.last_time;
 
-        scene_data.model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
+        for entity in scene_data.entities.iter_mut() {
+            entity.transform =
+                entity.transform * Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(10.0) * delta);
+        }
 
-        Ok(())
+        self.last_time = time;
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Mover;
 impl Mover {
-    pub fn work(scene_data: &mut SceneData) -> Result<()> {
-        scene_data.vertex_indices.shuffle(&mut thread_rng());
-
-        Ok(())
+    pub fn work(&mut self, scene_data: &mut SceneData) {
+        scene_data.entities[0]
+            .vertex_indices
+            .shuffle(&mut thread_rng());
     }
 }

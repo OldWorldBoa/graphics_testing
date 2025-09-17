@@ -1,11 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use vk::DescriptorPool;
 use vulkanalia::{prelude::v1_0::*, vk::DescriptorSet};
 
-use crate::{
-    infrastructure::{error::SuitabilityError, image::ImageBundle},
-    world::uniform::UniformBufferObject,
-};
+use crate::{infrastructure::image::ImageBundle, world::uniform::UniformBufferObject};
 
 /// Creates the descriptor set layout
 ///

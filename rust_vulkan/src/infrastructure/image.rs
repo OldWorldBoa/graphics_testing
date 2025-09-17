@@ -1,6 +1,4 @@
 use anyhow::{anyhow, Result};
-use png;
-use std::fs::File;
 use std::ptr::copy_nonoverlapping as memcpy;
 use vk::PhysicalDevice;
 use vulkanalia::prelude::v1_0::*;
@@ -341,6 +339,7 @@ pub unsafe fn create_depth_image(
     command_pool: vk::CommandPool,
     graphics_queue: vk::Queue,
     swapchain_extent: vk::Extent2D,
+    msaa_samples: vk::SampleCountFlags,
 ) -> Result<ImageBundle> {
     let format = get_depth_format(instance, physical_device)?;
 
@@ -352,7 +351,7 @@ pub unsafe fn create_depth_image(
         swapchain_extent.height,
         1,
         format,
-        vk::SampleCountFlags::_1,
+        msaa_samples,
         vk::ImageTiling::OPTIMAL,
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
