@@ -336,7 +336,6 @@ pub unsafe fn create_depth_image(
     device: &Device,
     instance: &Instance,
     physical_device: PhysicalDevice,
-    command_pool: vk::CommandPool,
     graphics_queue: vk::Queue,
     swapchain_extent: vk::Extent2D,
     msaa_samples: vk::SampleCountFlags,

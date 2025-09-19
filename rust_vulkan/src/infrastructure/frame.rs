@@ -3,7 +3,6 @@ use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
 use vulkanalia::Device;
 
-use crate::infrastructure::commands::create_command_buffer;
 use crate::infrastructure::commands::create_command_pool;
 use crate::infrastructure::swapchain::SwapchainInfo;
 
@@ -14,7 +13,7 @@ use crate::infrastructure::swapchain::SwapchainInfo;
 pub struct FrameBundle {
     pub frame_buffer: vk::Framebuffer,
     pub command_pool: vk::CommandPool,
-    pub command_buffers: Vec<vk::CommandBuffer>,
+    pub primary_command_buffer: vk::CommandBuffer,
     pub secondary_command_buffers: Vec<vk::CommandBuffer>,
 }
 
@@ -35,8 +34,14 @@ pub unsafe fn create_framebundles(
 
     for swapchain_view in swapchain_info.swapchain_image_views.iter() {
         let command_pool = create_command_pool(instance, device, surface, physical_device)?;
-        let mut secondary_command_buffers = vec![];
 
+        let allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+        let primary_command_buffer = device.allocate_command_buffers(&allocate_info)?[0];
+
+        let mut secondary_command_buffers = vec![];
         for i in 0..num_models {
             let allocate_info = vk::CommandBufferAllocateInfo::builder()
                 .command_pool(command_pool)
@@ -59,7 +64,7 @@ pub unsafe fn create_framebundles(
                 swapchain_info.swapchain_extent.width,
             )?,
             command_pool,
-            command_buffers: vec![create_command_buffer(device, command_pool)?],
+            primary_command_buffer,
             secondary_command_buffers,
         });
     }

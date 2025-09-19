@@ -19,9 +19,9 @@ use crate::world::vertex::Vertex;
 pub unsafe fn create_vertex_buffer(
     instance: &Instance,
     device: &Device,
-    command_pool: CommandPool,
     graphics_queue: vk::Queue,
     physical_device: PhysicalDevice,
+    command_pool: CommandPool,
     vertices: &[Vertex],
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
     let size = (size_of::<Vertex>() * vertices.len()) as u64;

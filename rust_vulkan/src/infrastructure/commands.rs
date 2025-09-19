@@ -4,7 +4,7 @@ use vulkanalia::vk::{PhysicalDevice, SurfaceKHR};
 
 use crate::infrastructure::frame::FrameBundle;
 use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
-use crate::world::scene::SceneData;
+use crate::world::scene::{Entity, SceneData};
 use crate::world::vertex::Mat4;
 
 //================================================
@@ -31,44 +31,6 @@ pub unsafe fn create_command_pool(
 //================================================
 // Command Buffers
 //================================================
-
-/// # Safety
-/// Check the vulkan spec for safety info
-pub unsafe fn create_command_buffer(
-    device: &Device,
-    command_pool: vk::CommandPool,
-) -> Result<vk::CommandBuffer> {
-    // Allocate
-    let allocate_info = vk::CommandBufferAllocateInfo::builder()
-        .command_pool(command_pool)
-        .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(1);
-
-    Ok(device.allocate_command_buffers(&allocate_info)?[0])
-}
-
-/// # Safety
-/// Check the vulkan spec for safety info
-pub unsafe fn create_command_buffers(
-    device: &Device,
-    command_pool: vk::CommandPool,
-    framebuffers: &[vk::Framebuffer],
-    swapchain_img_len: usize,
-) -> Result<Vec<vk::CommandBuffer>> {
-    let command_buffers = vec![];
-    for idx in 0..swapchain_img_len {
-        // Allocate
-        let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(command_pool)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(framebuffers.len() as u32);
-
-        let command_buffer = device.allocate_command_buffers(&allocate_info)?;
-    }
-
-    Ok(command_buffers)
-}
-
 /// # Safety
 /// Check the vulkan spec for safety info
 pub unsafe fn update_command_buffer(
@@ -84,7 +46,7 @@ pub unsafe fn update_command_buffer(
     scene_data: &SceneData,
 ) -> Result<()> {
     device.reset_command_pool(framebundle.command_pool, vk::CommandPoolResetFlags::empty())?;
-    let command_buffer = framebundle.command_buffers[0];
+    let command_buffer = framebundle.primary_command_buffer;
 
     // Commands
     let info =
@@ -122,32 +84,29 @@ pub unsafe fn update_command_buffer(
         vk::SubpassContents::SECONDARY_COMMAND_BUFFERS,
     );
 
-    let secondary_command_buffer = (0..3)
-        .map(|i| {
-            update_secondary_command_buffer(
-                device,
-                render_pass,
-                pipeline,
-                pipeline_layout,
-                vertex_buffer,
-                index_buffer,
-                descriptor_sets,
-                framebundle,
-                scene_data,
-                0,
-                i,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    device.cmd_execute_commands(command_buffer, &&secondary_command_buffer[..]);
+    for (i, entity) in scene_data.entities.iter().enumerate() {
+        update_secondary_command_buffer(
+            device,
+            render_pass,
+            pipeline,
+            pipeline_layout,
+            vertex_buffer,
+            index_buffer,
+            descriptor_sets,
+            framebundle,
+            i,
+            entity,
+        )?;
+    }
 
+    device.cmd_execute_commands(command_buffer, &framebundle.secondary_command_buffers);
     device.cmd_end_render_pass(command_buffer);
     device.end_command_buffer(command_buffer)?;
 
     Ok(())
 }
 
-pub unsafe fn update_secondary_command_buffer(
+unsafe fn update_secondary_command_buffer(
     device: &Device,
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
@@ -156,10 +115,9 @@ pub unsafe fn update_secondary_command_buffer(
     index_buffer: vk::Buffer,
     descriptor_sets: vk::DescriptorSet,
     framebundle: &FrameBundle,
-    scene_data: &SceneData,
-    image_index: usize,
     model_index: usize,
-) -> Result<vk::CommandBuffer> {
+    entity: &Entity,
+) -> Result<()> {
     let command_buffer = framebundle.secondary_command_buffers[model_index];
 
     let inheritance_info = vk::CommandBufferInheritanceInfo::builder()
@@ -185,7 +143,7 @@ pub unsafe fn update_secondary_command_buffer(
     );
 
     let model_bytes = std::slice::from_raw_parts(
-        &scene_data.entities[0].transform as *const Mat4 as *const u8,
+        &entity.transform as *const Mat4 as *const u8,
         size_of::<Mat4>(),
     );
 
@@ -201,11 +159,11 @@ pub unsafe fn update_secondary_command_buffer(
         pipeline_layout,
         vk::ShaderStageFlags::FRAGMENT,
         64,
-        &scene_data.entities[0].opacity.to_ne_bytes()[..],
+        &entity.opacity.to_ne_bytes()[..],
     );
     device.cmd_draw_indexed(
         command_buffer,
-        scene_data.entities[0].vertex_indices.len() as u32,
+        entity.vertex_indices.len() as u32,
         1,
         0,
         0,
@@ -214,7 +172,7 @@ pub unsafe fn update_secondary_command_buffer(
 
     device.end_command_buffer(command_buffer)?;
 
-    Ok(command_buffer)
+    Ok(())
 }
 
 //================================================

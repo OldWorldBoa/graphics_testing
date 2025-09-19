@@ -72,13 +72,10 @@ pub struct AppInfrastructure {
     pub render_pass: vk::RenderPass,
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
+    pub static_command_pool: vk::CommandPool,
 
     // Frame Bundles (Buffer, Command Pool, Command Buffer)
     pub framebundles: Vec<FrameBundle>,
-
-    // Static info for every frame, used for depth and textures
-    pub global_command_pool: vk::CommandPool,
-    pub global_command_buffers: Vec<vk::CommandBuffer>,
 
     // Buffers
     pub vertex_buffer: vk::Buffer,
@@ -151,7 +148,7 @@ impl App {
         infrastructure.pipeline_layout = pipeline_layout;
         infrastructure.pipeline = pipeline;
 
-        infrastructure.global_command_pool = create_command_pool(
+        infrastructure.static_command_pool = create_command_pool(
             &instance,
             &device,
             infrastructure.surface,
@@ -175,7 +172,6 @@ impl App {
             &device,
             &instance,
             infrastructure.physical_device,
-            infrastructure.global_command_pool,
             infrastructure.graphics_queue,
             infrastructure.swapchain_info.swapchain_extent,
             infrastructure.msaa_samples,
@@ -186,7 +182,7 @@ impl App {
             &device,
             &instance,
             infrastructure.physical_device,
-            infrastructure.global_command_pool,
+            infrastructure.static_command_pool,
             infrastructure.graphics_queue,
         )?;
 
@@ -199,7 +195,7 @@ impl App {
             &infrastructure.swapchain_info,
             infrastructure.depth_bundle.image_view,
             infrastructure.color_sample_bundle.image_view,
-            3,
+            scene.scene_data.entities.len() as u32,
         )?;
 
         infrastructure.texture_sampler =
@@ -208,9 +204,9 @@ impl App {
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
             &instance,
             &device,
-            infrastructure.global_command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
+            infrastructure.static_command_pool,
             &scene.scene_data.entities[0].vertex_data,
         )?;
         infrastructure.vertex_buffer = vertex_buffer;
@@ -219,7 +215,7 @@ impl App {
         let (index_buffer, index_buffer_memory) = create_index_buffer(
             &instance,
             &device,
-            infrastructure.global_command_pool,
+            infrastructure.static_command_pool,
             infrastructure.graphics_queue,
             infrastructure.physical_device,
             &scene.scene_data.entities[0].vertex_indices,
@@ -304,7 +300,7 @@ impl App {
 
         self.infrastructure.images_in_flight[image_index] = in_flight_fence;
 
-        update_vertex_buffer(
+        /*update_vertex_buffer(
             &self.scene.scene_data.entities[0].vertex_data,
             self.infrastructure.vertex_buffer,
             &self.instance,
@@ -312,7 +308,8 @@ impl App {
             self.infrastructure.physical_device,
             self.infrastructure.framebundles[image_index].command_pool,
             self.infrastructure.graphics_queue,
-        )?;
+        )?;*/
+
         update_command_buffer(
             &self.device,
             self.infrastructure.pipeline_layout,
@@ -329,7 +326,8 @@ impl App {
 
         let wait_semaphores = &[self.infrastructure.image_available_semaphores[self.frame]];
         let wait_stages = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        let command_buffers = &[self.infrastructure.framebundles[image_index].command_buffers[0]];
+        let command_buffers =
+            &[self.infrastructure.framebundles[image_index].primary_command_buffer];
         let signal_semaphores = &[self.infrastructure.render_finished_semaphores[self.frame]];
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(wait_semaphores)
@@ -410,7 +408,6 @@ impl App {
             &self.device,
             &self.instance,
             self.infrastructure.physical_device,
-            self.infrastructure.global_command_pool,
             self.infrastructure.graphics_queue,
             self.infrastructure.swapchain_info.swapchain_extent,
             self.infrastructure.msaa_samples,
@@ -421,7 +418,7 @@ impl App {
             &self.device,
             &self.instance,
             self.infrastructure.physical_device,
-            self.infrastructure.global_command_pool,
+            self.infrastructure.static_command_pool,
             self.infrastructure.graphics_queue,
         )?;
 
@@ -434,7 +431,7 @@ impl App {
             &self.infrastructure.swapchain_info,
             self.infrastructure.depth_bundle.image_view,
             self.infrastructure.color_sample_bundle.image_view,
-            3,
+            self.scene.scene_data.entities.len() as u32,
         )?;
 
         let uniform_infrastructure = create_uniform_buffers(
@@ -509,7 +506,7 @@ impl App {
         self.device.destroy_buffer(self.infrastructure.index_buffer, None);
         self.device.free_memory(self.infrastructure.vertex_buffer_memory, None);
         self.device.destroy_buffer(self.infrastructure.vertex_buffer, None);
-        self.device.destroy_command_pool(self.infrastructure.global_command_pool, None);
+        self.device.destroy_command_pool(self.infrastructure.static_command_pool, None);
         self.device.destroy_descriptor_set_layout(self.infrastructure.descriptor_set_layout, None);
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.infrastructure.surface, None);
