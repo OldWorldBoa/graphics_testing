@@ -4,6 +4,13 @@ use vulkanalia::{prelude::v1_0::*, vk::DescriptorSet};
 
 use crate::{infrastructure::image::ImageBundle, world::uniform::UniformBufferObject};
 
+pub enum DescriptorSetType {
+    EngineGlobal,
+    PerPassResource,
+    MaterialResource,
+    PerObjectResource,
+}
+
 /// Creates the descriptor set layout
 ///
 /// # Safety

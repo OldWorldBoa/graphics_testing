@@ -1,10 +1,17 @@
 use anyhow::Result;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
+use vulkanalia::vk::DescriptorPool;
+use vulkanalia::vk::DescriptorSetLayout;
 use vulkanalia::Device;
 
+use crate::infrastructure::buffer::create_buffer;
+use crate::infrastructure::buffer::create_index_buffer;
+use crate::infrastructure::buffer::create_vertex_buffer;
 use crate::infrastructure::commands::create_command_pool;
 use crate::infrastructure::swapchain::SwapchainInfo;
+use crate::world::scene::SceneData;
+use crate::world::uniform::UniformBufferObject;
 
 //================================================
 // Frame Bundle
@@ -15,6 +22,13 @@ pub struct FrameBundle {
     pub command_pool: vk::CommandPool,
     pub primary_command_buffer: vk::CommandBuffer,
     pub secondary_command_buffers: Vec<vk::CommandBuffer>,
+    pub vertex_buffer: vk::Buffer,
+    pub vertex_buffer_memory: vk::DeviceMemory,
+    pub index_buffer: vk::Buffer,
+    pub index_buffer_memory: vk::DeviceMemory,
+    pub uniform_buffer: vk::Buffer,
+    pub uniform_buffer_memory: vk::DeviceMemory,
+    pub descriptor_set: Vec<vk::DescriptorSet>,
 }
 
 /// # Safety
@@ -22,17 +36,29 @@ pub struct FrameBundle {
 pub unsafe fn create_framebundles(
     instance: &Instance,
     device: &Device,
+    graphics_queue: vk::Queue,
     surface: vk::SurfaceKHR,
     physical_device: vk::PhysicalDevice,
     render_pass: vk::RenderPass,
     swapchain_info: &SwapchainInfo,
     depth_view: vk::ImageView,
+    texture_view: vk::ImageView,
     sampling_view: vk::ImageView,
-    num_models: u32,
+    pool: DescriptorPool,
+    layout: DescriptorSetLayout,
+    sampler: vk::Sampler,
+    scene_data: &SceneData,
 ) -> Result<Vec<FrameBundle>> {
     let mut framebundles = vec![];
+    let len = swapchain_info.swapchain_image_views.len();
+    let layouts = vec![layout; len];
+    let info = vk::DescriptorSetAllocateInfo::builder()
+        .descriptor_pool(pool)
+        .set_layouts(&layouts);
 
-    for swapchain_view in swapchain_info.swapchain_image_views.iter() {
+    let desc_sets = device.allocate_descriptor_sets(&info)?;
+
+    for (i, swapchain_view) in swapchain_info.swapchain_image_views.iter().enumerate() {
         let command_pool = create_command_pool(instance, device, surface, physical_device)?;
 
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
@@ -42,7 +68,7 @@ pub unsafe fn create_framebundles(
         let primary_command_buffer = device.allocate_command_buffers(&allocate_info)?[0];
 
         let mut secondary_command_buffers = vec![];
-        for i in 0..num_models {
+        for _ in 0..scene_data.entities.len() {
             let allocate_info = vk::CommandBufferAllocateInfo::builder()
                 .command_pool(command_pool)
                 .level(vk::CommandBufferLevel::SECONDARY)
@@ -52,6 +78,61 @@ pub unsafe fn create_framebundles(
 
             secondary_command_buffers.push(command_buffer);
         }
+
+        let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
+            &instance,
+            &device,
+            graphics_queue,
+            physical_device,
+            command_pool,
+            &scene_data.entities[0].vertex_data,
+        )?;
+
+        let (index_buffer, index_buffer_memory) = create_index_buffer(
+            &instance,
+            &device,
+            command_pool,
+            graphics_queue,
+            physical_device,
+            &scene_data.entities[0].vertex_indices,
+        )?;
+
+        let (uniform_buffer, uniform_buffer_memory) = create_buffer(
+            instance,
+            device,
+            physical_device,
+            size_of::<UniformBufferObject>() as u64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
+        )?;
+
+        let info = vk::DescriptorBufferInfo::builder()
+            .buffer(uniform_buffer)
+            .offset(0)
+            .range(size_of::<UniformBufferObject>() as u64);
+
+        let buffer_info = &[info];
+        let ubo_write = vk::WriteDescriptorSet::builder()
+            .dst_set(desc_sets[i])
+            .dst_binding(0)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .buffer_info(buffer_info);
+
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(texture_view)
+            .sampler(sampler);
+
+        let image_infos = &[image_info];
+        let sampler_write = vk::WriteDescriptorSet::builder()
+            .dst_set(desc_sets[i])
+            .dst_binding(1)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(image_infos);
+
+        device.update_descriptor_sets(&[ubo_write, sampler_write], &[] as &[vk::CopyDescriptorSet]);
 
         framebundles.push(FrameBundle {
             frame_buffer: create_framebuffer(
@@ -66,6 +147,13 @@ pub unsafe fn create_framebundles(
             command_pool,
             primary_command_buffer,
             secondary_command_buffers,
+            vertex_buffer,
+            vertex_buffer_memory,
+            index_buffer,
+            index_buffer_memory,
+            uniform_buffer,
+            uniform_buffer_memory,
+            descriptor_set: vec![desc_sets[i]],
         });
     }
 

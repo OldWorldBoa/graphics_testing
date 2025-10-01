@@ -77,14 +77,6 @@ pub struct AppInfrastructure {
     // Frame Bundles (Buffer, Command Pool, Command Buffer)
     pub framebundles: Vec<FrameBundle>,
 
-    // Buffers
-    pub vertex_buffer: vk::Buffer,
-    pub vertex_buffer_memory: vk::DeviceMemory,
-    pub index_buffer: vk::Buffer,
-    pub index_buffer_memory: vk::DeviceMemory,
-    pub uniform_buffers: Vec<vk::Buffer>,
-    pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
-
     // Image Bundles
     pub color_sample_bundle: ImageBundle,
     pub depth_bundle: ImageBundle,
@@ -186,71 +178,29 @@ impl App {
             infrastructure.graphics_queue,
         )?;
 
-        infrastructure.framebundles = create_framebundles(
-            &instance,
-            &device,
-            infrastructure.surface,
-            infrastructure.physical_device,
-            infrastructure.render_pass,
-            &infrastructure.swapchain_info,
-            infrastructure.depth_bundle.image_view,
-            infrastructure.color_sample_bundle.image_view,
-            scene.scene_data.entities.len() as u32,
-        )?;
-
         infrastructure.texture_sampler =
             create_texture_sampler(&device, infrastructure.texture_bundle.mip_levels)?;
-
-        let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
-            &instance,
-            &device,
-            infrastructure.graphics_queue,
-            infrastructure.physical_device,
-            infrastructure.static_command_pool,
-            &scene.scene_data.entities[0].vertex_data,
-        )?;
-        infrastructure.vertex_buffer = vertex_buffer;
-        infrastructure.vertex_buffer_memory = vertex_buffer_memory;
-
-        let (index_buffer, index_buffer_memory) = create_index_buffer(
-            &instance,
-            &device,
-            infrastructure.static_command_pool,
-            infrastructure.graphics_queue,
-            infrastructure.physical_device,
-            &scene.scene_data.entities[0].vertex_indices,
-        )?;
-        infrastructure.index_buffer = index_buffer;
-        infrastructure.index_buffer_memory = index_buffer_memory;
-
-        let uniform_infrastructure = create_uniform_buffers(
-            &instance,
-            &device,
-            infrastructure.physical_device,
-            infrastructure.swapchain_info.swapchain_images.len(),
-        )?;
-
-        infrastructure.uniform_buffers.clear();
-        infrastructure.uniform_buffers_memory.clear();
-        for (uniform_buffer, uniform_buffer_memory) in uniform_infrastructure {
-            infrastructure.uniform_buffers.push(uniform_buffer);
-            infrastructure
-                .uniform_buffers_memory
-                .push(uniform_buffer_memory);
-        }
 
         infrastructure.descriptor_pool = create_descriptor_pool(
             &device,
             infrastructure.swapchain_info.swapchain_images.len() as u32,
         )?;
-        infrastructure.descriptor_sets = create_descriptor_sets(
+
+        infrastructure.framebundles = create_framebundles(
+            &instance,
             &device,
-            infrastructure.texture_sampler,
-            &infrastructure.uniform_buffers,
-            &infrastructure.texture_bundle,
-            infrastructure.descriptor_set_layout,
+            infrastructure.graphics_queue,
+            infrastructure.surface,
+            infrastructure.physical_device,
+            infrastructure.render_pass,
+            &infrastructure.swapchain_info,
+            infrastructure.depth_bundle.image_view,
+            infrastructure.texture_bundle.image_view,
+            infrastructure.color_sample_bundle.image_view,
             infrastructure.descriptor_pool,
-            infrastructure.swapchain_info.swapchain_images.len(),
+            infrastructure.descriptor_set_layout,
+            infrastructure.texture_sampler,
+            &scene.scene_data,
         )?;
 
         create_sync_objects(&device, &mut infrastructure)?;

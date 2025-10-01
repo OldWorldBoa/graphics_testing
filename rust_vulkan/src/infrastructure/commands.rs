@@ -36,9 +36,6 @@ pub unsafe fn create_command_pool(
 pub unsafe fn update_command_buffer(
     device: &Device,
     pipeline_layout: vk::PipelineLayout,
-    vertex_buffer: vk::Buffer,
-    index_buffer: vk::Buffer,
-    descriptor_sets: vk::DescriptorSet,
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
     extent: vk::Extent2D,
@@ -90,9 +87,6 @@ pub unsafe fn update_command_buffer(
             render_pass,
             pipeline,
             pipeline_layout,
-            vertex_buffer,
-            index_buffer,
-            descriptor_sets,
             framebundle,
             i,
             entity,
@@ -111,9 +105,6 @@ unsafe fn update_secondary_command_buffer(
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
-    vertex_buffer: vk::Buffer,
-    index_buffer: vk::Buffer,
-    descriptor_sets: vk::DescriptorSet,
     framebundle: &FrameBundle,
     model_index: usize,
     entity: &Entity,
@@ -131,14 +122,19 @@ unsafe fn update_secondary_command_buffer(
 
     device.begin_command_buffer(command_buffer, &info)?;
     device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
-    device.cmd_bind_vertex_buffers(command_buffer, 0, &[vertex_buffer], &[0]);
-    device.cmd_bind_index_buffer(command_buffer, index_buffer, 0, vk::IndexType::UINT32);
+    device.cmd_bind_vertex_buffers(command_buffer, 0, &[framebundle.vertex_buffer], &[0]);
+    device.cmd_bind_index_buffer(
+        command_buffer,
+        framebundle.index_buffer,
+        0,
+        vk::IndexType::UINT32,
+    );
     device.cmd_bind_descriptor_sets(
         command_buffer,
         vk::PipelineBindPoint::GRAPHICS,
         pipeline_layout,
         0,
-        &[descriptor_sets],
+        &[framebundle.descriptor_set[model_index]],
         &[],
     );
 

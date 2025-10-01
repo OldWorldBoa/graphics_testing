@@ -14,7 +14,6 @@ pub struct Scene {
     // Automata
     pub spinner: Spinner,
     pub mover: Mover,
-
     pub scene_data: SceneData,
 }
 impl Scene {
