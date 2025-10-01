@@ -134,7 +134,7 @@ unsafe fn update_secondary_command_buffer(
         vk::PipelineBindPoint::GRAPHICS,
         pipeline_layout,
         0,
-        &[framebundle.descriptor_set[model_index]],
+        &[framebundle.descriptor_set],
         &[],
     );
 

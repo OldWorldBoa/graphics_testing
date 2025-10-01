@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
 use vulkanalia::vk::DescriptorPool;
@@ -28,7 +29,28 @@ pub struct FrameBundle {
     pub index_buffer_memory: vk::DeviceMemory,
     pub uniform_buffer: vk::Buffer,
     pub uniform_buffer_memory: vk::DeviceMemory,
-    pub descriptor_set: Vec<vk::DescriptorSet>,
+    pub descriptor_set: vk::DescriptorSet,
+}
+
+impl FrameBundle {
+    pub unsafe fn update_uniform_buffer(
+        &self,
+        device: &Device,
+        scene_data: &SceneData,
+    ) -> Result<()> {
+        let memory = device.map_memory(
+            self.uniform_buffer_memory,
+            0,
+            size_of::<UniformBufferObject>() as u64,
+            vk::MemoryMapFlags::empty(),
+        )?;
+
+        memcpy(&scene_data.uniform_data, memory.cast(), 1);
+
+        device.unmap_memory(self.uniform_buffer_memory);
+
+        Ok(())
+    }
 }
 
 /// # Safety
@@ -153,7 +175,7 @@ pub unsafe fn create_framebundles(
             index_buffer_memory,
             uniform_buffer,
             uniform_buffer_memory,
-            descriptor_set: vec![desc_sets[i]],
+            descriptor_set: desc_sets[i],
         });
     }
 

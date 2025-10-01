@@ -249,30 +249,18 @@ impl App {
         }
 
         self.infrastructure.images_in_flight[image_index] = in_flight_fence;
-
-        /*update_vertex_buffer(
-            &self.scene.scene_data.entities[0].vertex_data,
-            self.infrastructure.vertex_buffer,
-            &self.instance,
-            &self.device,
-            self.infrastructure.physical_device,
-            self.infrastructure.framebundles[image_index].command_pool,
-            self.infrastructure.graphics_queue,
-        )?;*/
+        self.infrastructure.framebundles[image_index]
+            .update_uniform_buffer(&self.device, &self.scene.scene_data);
 
         update_command_buffer(
             &self.device,
             self.infrastructure.pipeline_layout,
-            self.infrastructure.vertex_buffer,
-            self.infrastructure.index_buffer,
-            self.infrastructure.descriptor_sets[image_index],
             self.infrastructure.render_pass,
             self.infrastructure.pipeline,
             self.infrastructure.swapchain_info.swapchain_extent,
             &self.infrastructure.framebundles[image_index],
             &self.scene.scene_data,
         )?;
-        self.update_uniform_buffer(image_index)?;
 
         let wait_semaphores = &[self.infrastructure.image_available_semaphores[self.frame]];
         let wait_stages = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -372,16 +360,26 @@ impl App {
             self.infrastructure.graphics_queue,
         )?;
 
+        self.infrastructure.descriptor_pool = create_descriptor_pool(
+            &self.device,
+            self.infrastructure.swapchain_info.swapchain_images.len() as u32,
+        )?;
+
         self.infrastructure.framebundles = create_framebundles(
             &self.instance,
             &self.device,
+            self.infrastructure.graphics_queue,
             self.infrastructure.surface,
             self.infrastructure.physical_device,
             self.infrastructure.render_pass,
             &self.infrastructure.swapchain_info,
             self.infrastructure.depth_bundle.image_view,
+            self.infrastructure.texture_bundle.image_view,
             self.infrastructure.color_sample_bundle.image_view,
-            self.scene.scene_data.entities.len() as u32,
+            self.infrastructure.descriptor_pool,
+            self.infrastructure.descriptor_set_layout,
+            self.infrastructure.texture_sampler,
+            &self.scene.scene_data,
         )?;
 
         let uniform_infrastructure = create_uniform_buffers(
@@ -391,49 +389,10 @@ impl App {
             self.infrastructure.swapchain_info.swapchain_images.len(),
         )?;
 
-        self.infrastructure.uniform_buffers.clear();
-        self.infrastructure.uniform_buffers_memory.clear();
-        for (uniform_buffer, uniform_buffer_memory) in uniform_infrastructure {
-            self.infrastructure.uniform_buffers.push(uniform_buffer);
-            self.infrastructure
-                .uniform_buffers_memory
-                .push(uniform_buffer_memory);
-        }
-
-        self.infrastructure.descriptor_pool = create_descriptor_pool(
-            &self.device,
-            self.infrastructure.swapchain_info.swapchain_images.len() as u32,
-        )?;
-        self.infrastructure.descriptor_sets = create_descriptor_sets(
-            &self.device,
-            self.infrastructure.texture_sampler,
-            &self.infrastructure.uniform_buffers,
-            &self.infrastructure.texture_bundle,
-            self.infrastructure.descriptor_set_layout,
-            self.infrastructure.descriptor_pool,
-            self.infrastructure.swapchain_info.swapchain_images.len(),
-        )?;
-
         self.infrastructure.images_in_flight.resize(
             self.infrastructure.swapchain_info.swapchain_images.len(),
             vk::Fence::null(),
         );
-
-        Ok(())
-    }
-
-    unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
-        let memory = self.device.map_memory(
-            self.infrastructure.uniform_buffers_memory[image_index],
-            0,
-            size_of::<UniformBufferObject>() as u64,
-            vk::MemoryMapFlags::empty(),
-        )?;
-
-        memcpy(&self.scene.scene_data.uniform_data, memory.cast(), 1);
-
-        self.device
-            .unmap_memory(self.infrastructure.uniform_buffers_memory[image_index]);
 
         Ok(())
     }
@@ -452,10 +411,6 @@ impl App {
         self.infrastructure.in_flight_fences.iter().for_each(|f| self.device.destroy_fence(*f, None));
         self.infrastructure.render_finished_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
         self.infrastructure.image_available_semaphores.iter().for_each(|s| self.device.destroy_semaphore(*s, None));
-        self.device.free_memory(self.infrastructure.index_buffer_memory, None);
-        self.device.destroy_buffer(self.infrastructure.index_buffer, None);
-        self.device.free_memory(self.infrastructure.vertex_buffer_memory, None);
-        self.device.destroy_buffer(self.infrastructure.vertex_buffer, None);
         self.device.destroy_command_pool(self.infrastructure.static_command_pool, None);
         self.device.destroy_descriptor_set_layout(self.infrastructure.descriptor_set_layout, None);
         self.device.destroy_device(None);
@@ -472,8 +427,6 @@ impl App {
     #[rustfmt::skip]
     unsafe fn destroy_swapchain(&mut self) {
         self.device.destroy_descriptor_pool(self.infrastructure.descriptor_pool, None);
-        self.infrastructure.uniform_buffers_memory.iter().for_each(|m| self.device.free_memory(*m, None));
-        self.infrastructure.uniform_buffers.iter().for_each(|b| self.device.destroy_buffer(*b, None));
 
         self.device.destroy_image(self.infrastructure.color_sample_bundle.image, None);
         self.device.destroy_image_view(self.infrastructure.color_sample_bundle.image_view, None);
@@ -488,7 +441,13 @@ impl App {
         self.device.free_memory(self.infrastructure.depth_bundle.image_memory, None);
 
         self.infrastructure.framebundles.iter().for_each(|f| {
-            self.device.free_command_buffers(f.command_pool, &f.command_buffers);
+            self.device.free_command_buffers(f.command_pool, &[f.primary_command_buffer]);
+            self.device.free_memory(f.uniform_buffer_memory, None);
+            self.device.destroy_buffer(f.uniform_buffer, None);
+            self.device.free_memory(f.index_buffer_memory, None);
+            self.device.destroy_buffer(f.index_buffer, None);
+            self.device.free_memory(f.vertex_buffer_memory, None);
+            self.device.destroy_buffer(f.vertex_buffer, None);
             self.device.destroy_command_pool(f.command_pool, None);
             self.device.destroy_framebuffer(f.frame_buffer, None);
         });
