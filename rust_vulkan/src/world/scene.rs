@@ -1,12 +1,12 @@
 use anyhow::Result;
-use cgmath::{point3, vec2, vec3, Deg};
+use cgmath::{vec2, vec3};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::time::Instant;
 
 use crate::world::automata::{Mover, Spinner};
-use crate::world::uniform::UniformBufferObject;
+use crate::world::camera::Camera;
 use crate::world::vertex::{Mat4, Vertex};
 
 #[derive(Debug, Clone)]
@@ -47,32 +47,15 @@ pub struct Entity {
 #[derive(Debug, Clone)]
 pub struct SceneData {
     pub start: Instant,
-    pub uniform_data: UniformBufferObject,
+    pub camera: Camera,
     pub entities: Vec<Entity>,
 }
 impl SceneData {
     pub fn create_scene_data(aspect_ratio: f32) -> Result<Self> {
         // initialize scene data
-        let view = Mat4::look_at_rh(
-            point3(6.0, 0.0, 2.0),
-            point3(0.0, 0.0, 0.0),
-            vec3(0.0, 0.0, 1.0),
-        );
-
-        #[rustfmt::skip]
-        let correction = Mat4::new(
-            1.0, 0.0, 0.0, 0.0,
-            0.0, -1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0/2.0, 0.0,
-            0.0, 0.0, 1.0/2.0, 1.0,
-        );
-        let proj = correction * cgmath::perspective(Deg(45.0), aspect_ratio, 0.1, 10.0);
-
-        let uniform_data = UniformBufferObject { view, proj };
-
         let mut scene_data = SceneData {
             start: Instant::now(),
-            uniform_data,
+            camera: Camera::new(aspect_ratio),
             entities: vec![],
         };
 

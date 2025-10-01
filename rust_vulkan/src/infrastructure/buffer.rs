@@ -5,7 +5,7 @@ use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::{CommandPool, PhysicalDevice};
 
 use crate::infrastructure::commands::{begin_single_time_commands, end_single_time_commands};
-use crate::world::uniform::UniformBufferObject;
+use crate::world::camera::UniformBufferObject;
 use crate::world::vertex::Vertex;
 
 //================================================

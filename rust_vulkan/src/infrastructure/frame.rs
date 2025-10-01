@@ -13,8 +13,8 @@ use crate::infrastructure::buffer::create_index_buffer;
 use crate::infrastructure::buffer::create_vertex_buffer;
 use crate::infrastructure::commands::create_command_pool;
 use crate::infrastructure::swapchain::SwapchainInfo;
+use crate::world::camera::UniformBufferObject;
 use crate::world::scene::SceneData;
-use crate::world::uniform::UniformBufferObject;
 use crate::world::vertex::Vertex;
 
 //================================================
@@ -50,7 +50,7 @@ impl FrameBundle {
             vk::MemoryMapFlags::empty(),
         )?;
 
-        memcpy(&scene_data.uniform_data, memory.cast(), 1);
+        memcpy(&scene_data.camera.get_ubo(), memory.cast(), 1);
 
         device.unmap_memory(self.uniform_buffer_memory);
 

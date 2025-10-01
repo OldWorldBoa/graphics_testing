@@ -1,6 +1,4 @@
-use cgmath::{vec3, Deg, Transform};
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use cgmath::{vec3, Deg};
 
 use crate::world::scene::SceneData;
 use crate::world::vertex::Mat4;

@@ -15,6 +15,7 @@ use vulkanalia::vk::ExtDebugUtilsExtension;
 use vulkanalia::vk::KhrSurfaceExtension;
 use vulkanalia::vk::KhrSwapchainExtension;
 use vulkanalia::window as vk_window;
+use winit::dpi::PhysicalPosition;
 use winit::window::Window;
 
 use crate::infrastructure::commands::{create_command_pool, update_command_buffer};
@@ -449,6 +450,24 @@ impl App {
         self.device.destroy_render_pass(self.infrastructure.render_pass, None);
         self.infrastructure.swapchain_info.swapchain_image_views.iter().for_each(|v| self.device.destroy_image_view(*v, None));
         self.device.destroy_swapchain_khr(self.infrastructure.swapchain_info.swapchain, None);
+    }
+
+    pub fn handle_keyboard(&self, keyCode: winit::keyboard::KeyCode) {}
+
+    pub fn handle_mouse(&self, mousePosition: PhysicalPosition<f64>) {
+        let height = self.infrastructure.swapchain_info.swapchain_extent.height as f32;
+        let width = self.infrastructure.swapchain_info.swapchain_extent.width as f32;
+
+        let delta_x = (100.0 - mousePosition.x) as f32;
+        let delta_y = (100.0 - mousePosition.y) as f32;
+        if (delta_x.abs() > 0.005) {
+            let x_angle = self.scene.scene_data.camera.fov * (delta_x / width);
+            println!("Mouse change x: {delta_x} = {:?}", x_angle);
+        }
+        if (delta_y.abs() > 0.005) {
+            let y_angle = self.scene.scene_data.camera.fov * (delta_y / height);
+            println!("Mouse change y: {delta_y} = {:?}", y_angle);
+        }
     }
 }
 

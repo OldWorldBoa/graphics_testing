@@ -7,9 +7,11 @@
     unsafe_op_in_unsafe_fn
 )]
 
+use std::collections::hash_map::Keys;
+
 use anyhow::Result;
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
+use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition};
+use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
@@ -29,6 +31,8 @@ fn main() -> Result<()> {
         .with_inner_size(LogicalSize::new(1024, 768))
         .build(&event_loop)?;
 
+    window.set_cursor_grab(winit::window::CursorGrabMode::Confined);
+
     // App
     let mut app = unsafe { App::create(&window)? };
     let mut minimized = false;
@@ -40,6 +44,29 @@ fn main() -> Result<()> {
                 // Render a frame if our Vulkan app is not being destroyed.
                 WindowEvent::RedrawRequested if !elwt.exiting() && !minimized => {
                     unsafe { app.render(&window) }.unwrap();
+                },
+                WindowEvent::CursorMoved { device_id, position } => {
+                    app.handle_mouse(position);
+                    window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+                    match window.set_cursor_position(PhysicalPosition::new(100.0, 100.0)) {
+                        Err(e) => println!("{e}"),
+                        _ => {}
+                    };
+                    window.set_cursor_grab(winit::window::CursorGrabMode::Confined);
+                },
+                WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+                    let key = event.physical_key;
+                    println!("{:?}", key);
+
+                    match key {
+                        winit::keyboard::PhysicalKey::Code(keyCode) => {
+                            app.handle_keyboard(keyCode);
+                        },
+                        winit::keyboard::PhysicalKey::Unidentified(nativeKeyCode) => {
+                            println!("Unknown key code {:?}", nativeKeyCode);
+                        }
+                    }
+
                 },
                 // Mark the window as having been resized.
                 WindowEvent::Resized(size) => {
