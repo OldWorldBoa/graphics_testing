@@ -1,4 +1,4 @@
-use cgmath::{vec3, Deg};
+use cgmath::{vec3, Deg, Transform};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
@@ -30,8 +30,10 @@ impl Spinner {
 pub struct Mover;
 impl Mover {
     pub fn work(&mut self, scene_data: &mut SceneData) {
-        scene_data.entities[0]
-            .vertex_indices
-            .shuffle(&mut thread_rng());
+        for entity in scene_data.entities.iter_mut() {
+            let time = scene_data.start.elapsed().as_secs_f32();
+            entity.transform =
+                entity.transform * Mat4::from_translation(vec3(0.0, time.sin() / 10000.0, 0.0));
+        }
     }
 }

@@ -70,51 +70,6 @@ pub unsafe fn create_vertex_buffer(
     Ok((vertex_buffer, vertex_buffer_memory))
 }
 
-/// # Safety
-/// Check the vulkan docs for safety info
-pub unsafe fn update_vertex_buffer(
-    vertices: &[Vertex],
-    vertex_buffer: vk::Buffer,
-    instance: &Instance,
-    device: &Device,
-    physical_device: PhysicalDevice,
-    command_pool: CommandPool,
-    graphics_queue: vk::Queue,
-) -> Result<()> {
-    let size = (size_of::<Vertex>() * vertices.len()) as u64;
-
-    // Create staging buffers
-    let (staging_buffer, staging_buffer_memory) = create_buffer(
-        instance,
-        device,
-        physical_device,
-        size,
-        vk::BufferUsageFlags::TRANSFER_SRC,
-        vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
-    )?;
-
-    // Copy (staging)
-    let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
-
-    memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
-    device.unmap_memory(staging_buffer_memory);
-
-    // Copy (vertex)
-    copy_buffer(
-        device,
-        command_pool,
-        graphics_queue,
-        staging_buffer,
-        vertex_buffer,
-        size,
-    )?;
-
-    device.destroy_buffer(staging_buffer, None);
-    device.free_memory(staging_buffer_memory, None);
-
-    Ok(())
-}
-
 /// Creates buffers for indices
 ///
 /// # Safety
@@ -248,7 +203,9 @@ pub unsafe fn create_buffer(
     Ok((buffer, buffer_memory))
 }
 
-unsafe fn copy_buffer(
+/// # Safety
+/// Check the vulkan docs for safety info
+pub unsafe fn copy_buffer(
     device: &Device,
     command_pool: CommandPool,
     graphics_queue: vk::Queue,

@@ -8,7 +8,6 @@
 )]
 
 use anyhow::{anyhow, Result};
-use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
@@ -18,14 +17,9 @@ use vulkanalia::vk::KhrSwapchainExtension;
 use vulkanalia::window as vk_window;
 use winit::window::Window;
 
-use crate::infrastructure::buffer::{
-    create_index_buffer, create_uniform_buffers, create_vertex_buffer, update_vertex_buffer,
-};
 use crate::infrastructure::commands::{create_command_pool, update_command_buffer};
 use crate::infrastructure::constants::{MAX_FRAMES_IN_FLIGHT, VALIDATION_ENABLED};
-use crate::infrastructure::descriptor::{
-    create_descriptor_pool, create_descriptor_set_layout, create_descriptor_sets,
-};
+use crate::infrastructure::descriptor::{create_descriptor_pool, create_descriptor_set_layout};
 use crate::infrastructure::frame::{create_framebundles, FrameBundle};
 use crate::infrastructure::image::{
     create_depth_image, create_sampling_image, create_texture_image, create_texture_sampler,
@@ -37,7 +31,6 @@ use crate::infrastructure::physical_device::{get_max_msaa_samples, pick_physical
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
 use crate::world::scene::Scene;
-use crate::world::uniform::UniformBufferObject;
 
 /// Our Vulkan app.
 #[derive(Clone, Debug)]
@@ -222,7 +215,6 @@ impl App {
     /// Check the vulkan docs for safety info
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
         self.scene.spinner.work(&mut self.scene.scene_data);
-        self.scene.mover.work(&mut self.scene.scene_data);
 
         let in_flight_fence = self.infrastructure.in_flight_fences[self.frame];
 
@@ -250,7 +242,14 @@ impl App {
 
         self.infrastructure.images_in_flight[image_index] = in_flight_fence;
         self.infrastructure.framebundles[image_index]
-            .update_uniform_buffer(&self.device, &self.scene.scene_data);
+            .update_uniform_buffer(&self.device, &self.scene.scene_data)?;
+        self.infrastructure.framebundles[image_index].update_vertex_buffer(
+            &self.instance,
+            &self.device,
+            self.infrastructure.physical_device,
+            self.infrastructure.graphics_queue,
+            &self.scene.scene_data,
+        )?;
 
         update_command_buffer(
             &self.device,
@@ -380,13 +379,6 @@ impl App {
             self.infrastructure.descriptor_set_layout,
             self.infrastructure.texture_sampler,
             &self.scene.scene_data,
-        )?;
-
-        let uniform_infrastructure = create_uniform_buffers(
-            &self.instance,
-            &self.device,
-            self.infrastructure.physical_device,
-            self.infrastructure.swapchain_info.swapchain_images.len(),
         )?;
 
         self.infrastructure.images_in_flight.resize(

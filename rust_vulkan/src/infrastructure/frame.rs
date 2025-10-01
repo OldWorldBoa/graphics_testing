@@ -4,8 +4,10 @@ use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
 use vulkanalia::vk::DescriptorPool;
 use vulkanalia::vk::DescriptorSetLayout;
+use vulkanalia::vk::PhysicalDevice;
 use vulkanalia::Device;
 
+use crate::infrastructure::buffer::copy_buffer;
 use crate::infrastructure::buffer::create_buffer;
 use crate::infrastructure::buffer::create_index_buffer;
 use crate::infrastructure::buffer::create_vertex_buffer;
@@ -13,6 +15,7 @@ use crate::infrastructure::commands::create_command_pool;
 use crate::infrastructure::swapchain::SwapchainInfo;
 use crate::world::scene::SceneData;
 use crate::world::uniform::UniformBufferObject;
+use crate::world::vertex::Vertex;
 
 //================================================
 // Frame Bundle
@@ -33,6 +36,8 @@ pub struct FrameBundle {
 }
 
 impl FrameBundle {
+    /// # Safety
+    /// Check the vulkan docs for safety info
     pub unsafe fn update_uniform_buffer(
         &self,
         device: &Device,
@@ -48,6 +53,52 @@ impl FrameBundle {
         memcpy(&scene_data.uniform_data, memory.cast(), 1);
 
         device.unmap_memory(self.uniform_buffer_memory);
+
+        Ok(())
+    }
+
+    /// # Safety
+    /// Check the vulkan docs for safety info
+    pub unsafe fn update_vertex_buffer(
+        &self,
+        instance: &Instance,
+        device: &Device,
+        physical_device: PhysicalDevice,
+        graphics_queue: vk::Queue,
+        scene_data: &SceneData,
+    ) -> Result<()> {
+        let vertices = &scene_data.entities[0].vertex_data;
+        let size = (size_of::<Vertex>() * vertices.len()) as u64;
+
+        // Create staging buffers
+        let (staging_buffer, staging_buffer_memory) = create_buffer(
+            instance,
+            device,
+            physical_device,
+            size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
+        )?;
+
+        // Copy (staging)
+        let memory =
+            device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
+
+        memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
+        device.unmap_memory(staging_buffer_memory);
+
+        // Copy (vertex)
+        copy_buffer(
+            device,
+            self.command_pool,
+            graphics_queue,
+            staging_buffer,
+            self.vertex_buffer,
+            size,
+        )?;
+
+        device.destroy_buffer(staging_buffer, None);
+        device.free_memory(staging_buffer_memory, None);
 
         Ok(())
     }
@@ -102,8 +153,8 @@ pub unsafe fn create_framebundles(
         }
 
         let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
-            &instance,
-            &device,
+            instance,
+            device,
             graphics_queue,
             physical_device,
             command_pool,
@@ -111,8 +162,8 @@ pub unsafe fn create_framebundles(
         )?;
 
         let (index_buffer, index_buffer_memory) = create_index_buffer(
-            &instance,
-            &device,
+            instance,
+            device,
             command_pool,
             graphics_queue,
             physical_device,
