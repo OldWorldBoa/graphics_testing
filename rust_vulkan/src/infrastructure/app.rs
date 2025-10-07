@@ -15,7 +15,7 @@ use vulkanalia::vk::ExtDebugUtilsExtension;
 use vulkanalia::vk::KhrSurfaceExtension;
 use vulkanalia::vk::KhrSwapchainExtension;
 use vulkanalia::window as vk_window;
-use winit::dpi::PhysicalPosition;
+use winit::event::KeyEvent;
 use winit::window::Window;
 
 use crate::infrastructure::commands::{create_command_pool, update_command_buffer};
@@ -31,6 +31,7 @@ use crate::infrastructure::logical_device::create_logical_device;
 use crate::infrastructure::physical_device::{get_max_msaa_samples, pick_physical_device};
 use crate::infrastructure::pipeline::{create_pipeline, create_render_pass};
 use crate::infrastructure::swapchain::{create_swapchain, SwapchainInfo};
+use crate::world::controller::Controller;
 use crate::world::scene::Scene;
 
 /// Our Vulkan app.
@@ -40,6 +41,7 @@ pub struct App {
     pub instance: Instance,
     pub infrastructure: AppInfrastructure,
     pub scene: Scene,
+    pub controller: Controller,
     pub device: Device,
     pub frame: usize,
     pub resized: bool,
@@ -204,6 +206,7 @@ impl App {
             instance,
             infrastructure,
             device,
+            controller: Controller::new(),
             frame: 0,
             resized: false,
             scene,
@@ -216,6 +219,8 @@ impl App {
     /// Check the vulkan docs for safety info
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
         self.scene.spinner.work(&mut self.scene.scene_data);
+        self.controller
+            .process_key_commands(&mut self.scene.scene_data.camera);
 
         let in_flight_fence = self.infrastructure.in_flight_fences[self.frame];
 
@@ -307,6 +312,7 @@ impl App {
 
     /// Recreates the swapchain for our Vulkan app.
     unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
+        println!("Recreating swapchain");
         self.device.device_wait_idle()?;
         self.destroy_swapchain();
         self.infrastructure.swapchain_info = create_swapchain(
@@ -452,22 +458,17 @@ impl App {
         self.device.destroy_swapchain_khr(self.infrastructure.swapchain_info.swapchain, None);
     }
 
-    pub fn handle_keyboard(&self, keyCode: winit::keyboard::KeyCode) {}
+    pub fn handle_keyboard(&mut self, key_event: KeyEvent) {
+        self.controller.handle_keypress(key_event);
+    }
 
-    pub fn handle_mouse(&self, mousePosition: PhysicalPosition<f64>) {
-        let height = self.infrastructure.swapchain_info.swapchain_extent.height as f32;
-        let width = self.infrastructure.swapchain_info.swapchain_extent.width as f32;
-
-        let delta_x = (100.0 - mousePosition.x) as f32;
-        let delta_y = (100.0 - mousePosition.y) as f32;
-        if (delta_x.abs() > 0.005) {
-            let x_angle = self.scene.scene_data.camera.fov * (delta_x / width);
-            println!("Mouse change x: {delta_x} = {:?}", x_angle);
-        }
-        if (delta_y.abs() > 0.005) {
-            let y_angle = self.scene.scene_data.camera.fov * (delta_y / height);
-            println!("Mouse change y: {delta_y} = {:?}", y_angle);
-        }
+    pub fn handle_mouse(&mut self, mouse_motion: (f64, f64)) {
+        self.controller.handle_camera_move(
+            &mut self.scene.scene_data.camera,
+            (mouse_motion.0 as f32, mouse_motion.1 as f32),
+            self.infrastructure.swapchain_info.swapchain_extent.height as f32,
+            self.infrastructure.swapchain_info.swapchain_extent.width as f32,
+        );
     }
 }
 
