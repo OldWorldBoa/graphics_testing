@@ -1,16 +1,20 @@
-use std::ops::Index;
-
-use cgmath::{point3, InnerSpace, Vector3, Vector4};
+use cgmath::{point3, InnerSpace, Matrix4, Quaternion, Rotation3, Vector3, Vector4};
 use winit::{
     event::{ElementState, KeyEvent},
-    keyboard::{KeyCode, ModifiersKeyState},
+    keyboard::KeyCode,
 };
 
-use crate::world::{camera::Camera, vertex::Mat4};
+use crate::world::camera::Camera;
 
 #[derive(Clone, Debug)]
 pub struct Controller {
     pressed: Vec<KeyCode>,
+}
+
+impl Default for Controller {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Controller {
@@ -27,15 +31,18 @@ impl Controller {
     ) {
         let delta_x = -motion.0;
         let delta_y = -motion.1;
-
-        let x_angle = camera.fov * (delta_x / width);
-        let y_angle = camera.fov * (delta_y / height);
-
+        let lr_angle = camera.fov * (delta_x / width);
+        let ud_angle = camera.fov * (delta_y / height) / 7.0;
         let view_vector = camera.center - camera.eye;
+
+        let y_rotation = Matrix4::from(Quaternion::from_axis_angle(
+            view_vector.cross(camera.up),
+            ud_angle,
+        ));
+        let z_rotation = Matrix4::from(Quaternion::from_axis_angle(camera.up, lr_angle));
+
         let view_vector4 = Vector4::new(view_vector.x, view_vector.y, view_vector.z, 0.0);
-        let z_rotation = Mat4::from_angle_z(x_angle);
-        let y_rotation = Mat4::from_angle_y(y_angle);
-        let rotated_vector = y_rotation * z_rotation * view_vector4;
+        let rotated_vector = z_rotation * y_rotation * view_vector4;
 
         camera.center = point3(
             rotated_vector.x + camera.eye.x,
@@ -64,7 +71,7 @@ impl Controller {
 
     pub fn process_key_commands(&self, camera: &mut Camera) {
         let mut move_vector = Vector3::new(0.0, 0.0, 0.0);
-        if self.pressed.len() == 0 {
+        if self.pressed.is_empty() {
             return;
         }
 
@@ -74,11 +81,11 @@ impl Controller {
             move_vector = (camera.center - camera.eye).normalize() / 300.0;
             move_vector *= -1.0;
         } else if self.pressed.contains(&KeyCode::KeyA) {
-            move_vector = (camera.center - camera.eye).normalize() / 300.0;
-            move_vector = move_vector.cross(camera.up);
+            move_vector = (camera.center - camera.eye).normalize();
+            move_vector = (move_vector.cross(camera.up) * -1.0) / 300.0;
         } else if self.pressed.contains(&KeyCode::KeyD) {
-            move_vector = (camera.center - camera.eye).normalize() / 300.0;
-            move_vector = (move_vector.cross(camera.up)) * -1.0;
+            move_vector = (camera.center - camera.eye).normalize();
+            move_vector = (move_vector.cross(camera.up)) / 300.0;
         }
 
         camera.eye = point3(
