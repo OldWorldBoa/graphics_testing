@@ -7,6 +7,8 @@
     unsafe_op_in_unsafe_fn
 )]
 
+use std::time::Instant;
+
 use anyhow::{anyhow, Result};
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
@@ -45,6 +47,19 @@ pub struct App {
     pub device: Device,
     pub frame: usize,
     pub resized: bool,
+    pub settings: AppSettings,
+    pub stats: AppStats,
+}
+
+#[derive(Clone, Debug)]
+pub struct AppSettings {}
+
+#[derive(Clone, Debug)]
+pub struct AppStats {
+    pub start: Instant,
+    pub last_logged: f32,
+    pub frames: u32,
+    pub frame_log: Vec<u32>,
 }
 
 /// The Vulkan handles and associated properties used by our Vulkan app.
@@ -210,6 +225,13 @@ impl App {
             frame: 0,
             resized: false,
             scene,
+            stats: AppStats {
+                start: Instant::now(),
+                last_logged: 0f32,
+                frames: 0,
+                frame_log: vec![],
+            },
+            settings: AppSettings {},
         })
     }
 
@@ -218,7 +240,9 @@ impl App {
     /// # Safety
     /// Check the vulkan docs for safety info
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+        self.log();
         self.scene.spinner.work(&mut self.scene.scene_data);
+        //self.scene.mover.work(&mut self.scene.scene_data);
         self.controller
             .process_key_commands(&mut self.scene.scene_data.camera);
 
@@ -249,7 +273,7 @@ impl App {
         self.infrastructure.images_in_flight[image_index] = in_flight_fence;
         self.infrastructure.framebundles[image_index]
             .update_uniform_buffer(&self.device, &self.scene.scene_data)?;
-        self.infrastructure.framebundles[image_index].update_vertex_buffer(
+        self.infrastructure.framebundles[image_index].update_vertex_buffers(
             &self.instance,
             &self.device,
             self.infrastructure.physical_device,
@@ -308,6 +332,26 @@ impl App {
         self.frame = (self.frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         Ok(())
+    }
+
+    fn log(&mut self) {
+        if self.stats.last_logged == 0.0 {
+            self.stats.last_logged = self.scene.scene_data.start.elapsed().as_secs_f32();
+        }
+
+        self.stats.frames += 1;
+
+        if self.scene.scene_data.start.elapsed().as_secs_f32() - self.stats.last_logged > 1.0 {
+            self.stats.last_logged = self.scene.scene_data.start.elapsed().as_secs_f32();
+
+            self.stats.frame_log.push(self.stats.frames);
+            let sum_fps: u32 = self.stats.frame_log.iter().sum();
+            let avg_fps = sum_fps / self.stats.frame_log.len() as u32;
+
+            println!("FPS: {}, Avg FPS: {avg_fps}", self.stats.frames);
+            self.stats.frames = 0;
+            //println!("Camera info: {:?}", scene.scene_data.camera);
+        }
     }
 
     /// Recreates the swapchain for our Vulkan app.
@@ -443,10 +487,12 @@ impl App {
             self.device.free_command_buffers(f.command_pool, &[f.primary_command_buffer]);
             self.device.free_memory(f.uniform_buffer_memory, None);
             self.device.destroy_buffer(f.uniform_buffer, None);
-            self.device.free_memory(f.index_buffer_memory, None);
-            self.device.destroy_buffer(f.index_buffer, None);
-            self.device.free_memory(f.vertex_buffer_memory, None);
-            self.device.destroy_buffer(f.vertex_buffer, None);
+            for bundle in f.entity_command_bundles.iter() {
+                self.device.free_memory(bundle.index_buffer_memory, None);
+                self.device.destroy_buffer(bundle.index_buffer, None);
+                self.device.free_memory(bundle.vertex_buffer_memory, None);
+                self.device.destroy_buffer(bundle.vertex_buffer, None);
+            }
             self.device.destroy_command_pool(f.command_pool, None);
             self.device.destroy_framebuffer(f.frame_buffer, None);
         });

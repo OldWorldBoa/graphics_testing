@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use std::ptr::copy_nonoverlapping as memcpy;
+use std::{fs::File, ptr::copy_nonoverlapping as memcpy};
 use vk::PhysicalDevice;
 use vulkanalia::prelude::v1_0::*;
 
@@ -43,6 +43,29 @@ pub unsafe fn create_texture_sampler(device: &Device, mip_levels: u32) -> Result
         .mip_lod_bias(0.0);
 
     Ok(device.create_sampler(&info, None)?)
+}
+
+/// load scene images
+///
+/// # Safety
+/// Check the vulkan docs for safety info
+pub fn load_texture_image(path: &str) -> Result<Texture> {
+    let image = File::open(path)?;
+
+    let decoder = png::Decoder::new(image);
+    let mut reader = decoder.read_info()?;
+    let mut pixels = vec![0; reader.info().raw_bytes()];
+    reader.next_frame(&mut pixels)?;
+
+    let size = reader.info().raw_bytes() as u64;
+    let (width, height) = reader.info().size();
+
+    Ok(Texture {
+        pixels,
+        size,
+        height,
+        width,
+    })
 }
 
 /// Creates the texture image

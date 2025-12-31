@@ -5,8 +5,11 @@ use std::fs::File;
 use std::io::BufReader;
 use std::time::Instant;
 
+use crate::infrastructure::image::load_texture_image;
 use crate::world::automata::{Mover, Spinner};
 use crate::world::camera::Camera;
+use crate::world::entity::entity::Entity;
+use crate::world::entity::human::Human;
 use crate::world::vertex::{Mat4, Vertex};
 
 #[derive(Debug, Clone)]
@@ -35,19 +38,10 @@ pub struct Texture {
 }
 
 #[derive(Debug, Clone)]
-pub struct Entity {
-    pub transform: Mat4,
-    pub vertex_data: Vec<Vertex>,
-    pub vertex_indices: Vec<u32>,
-    pub texture: Texture,
-    pub opacity: f32,
-    pub mip_levels: u32,
-}
-
-#[derive(Debug, Clone)]
 pub struct SceneData {
     pub start: Instant,
     pub camera: Camera,
+    pub humans: Vec<Human>,
     pub entities: Vec<Entity>,
 }
 impl SceneData {
@@ -57,6 +51,7 @@ impl SceneData {
             start: Instant::now(),
             camera: Camera::new(aspect_ratio),
             entities: vec![],
+            humans: vec![Human::new()?, Human::new()?],
         };
 
         scene_data.load_entities()?;
@@ -70,55 +65,16 @@ impl SceneData {
             transform: Mat4::from_translation(vec3(0.0, -1.25, 1.0)),
             vertex_data,
             vertex_indices,
-            texture: self.load_texture_image("resources/viking_room.png")?,
-            opacity: 0.25,
+            texture: load_texture_image("resources/viking_room.png")?,
+            opacity: 1.0,
             mip_levels: 1,
         });
 
-        let (vertex_data, vertex_indices) = self.load_model("resources/viking_room.obj")?;
-        self.entities.push(Entity {
-            transform: Mat4::from_translation(vec3(0.0, -1.25, -1.0)),
-            vertex_data,
-            vertex_indices,
-            texture: self.load_texture_image("resources/viking_room.png")?,
-            opacity: 0.25,
-            mip_levels: 1,
-        });
-
-        let (vertex_data, vertex_indices) = self.load_model("resources/viking_room.obj")?;
-        self.entities.push(Entity {
-            transform: Mat4::from_translation(vec3(0.0, 1.25, 0.0)),
-            vertex_data,
-            vertex_indices,
-            texture: self.load_texture_image("resources/viking_room.png")?,
-            opacity: 0.25,
-            mip_levels: 1,
-        });
+        for human in self.humans.iter() {
+            self.entities.push(human.entity.clone());
+        }
 
         Ok(())
-    }
-
-    /// load scene images
-    ///
-    /// # Safety
-    /// Check the vulkan docs for safety info
-    pub fn load_texture_image(&self, path: &str) -> Result<Texture> {
-        let image = File::open(path)?;
-
-        let decoder = png::Decoder::new(image);
-        let mut reader = decoder.read_info()?;
-        let mut pixels = vec![0; reader.info().raw_bytes()];
-        reader.next_frame(&mut pixels)?;
-
-        let size = reader.info().raw_bytes() as u64;
-        let (width, height) = reader.info().size();
-
-        Ok(Texture {
-            pixels,
-            size,
-            height,
-            width,
-        })
     }
 
     /// load scene model

@@ -1,6 +1,6 @@
 use cgmath::{vec3, Deg};
 
-use crate::world::scene::SceneData;
+use crate::world::scene::{Scene, SceneData};
 use crate::world::vertex::Mat4;
 
 /*

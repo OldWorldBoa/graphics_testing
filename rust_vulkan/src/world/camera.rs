@@ -21,7 +21,7 @@ impl Camera {
             0.0, 0.0, 1.0/2.0, 1.0,
         );
         let fov = Deg(45.0);
-        let proj = correction * cgmath::perspective(Deg(45.0), aspect_ratio, 0.1, 10.0);
+        let proj = correction * cgmath::perspective(Deg(45.0), aspect_ratio, 0.1, 100.0);
 
         Camera {
             eye: point3(6.0, 0.0, 2.0),

@@ -4,7 +4,8 @@ use vulkanalia::vk::{PhysicalDevice, SurfaceKHR};
 
 use crate::infrastructure::frame::FrameBundle;
 use crate::infrastructure::queue_family_indices::QueueFamilyIndices;
-use crate::world::scene::{Entity, SceneData};
+use crate::world::entity::entity::Entity;
+use crate::world::scene::SceneData;
 use crate::world::vertex::Mat4;
 
 //================================================
@@ -93,7 +94,12 @@ pub unsafe fn update_command_buffer(
         )?;
     }
 
-    device.cmd_execute_commands(command_buffer, &framebundle.secondary_command_buffers);
+    let mut secondary_command_buffers = vec![];
+    for bundle in framebundle.entity_command_bundles.iter() {
+        secondary_command_buffers.push(bundle.secondary_command_buffer);
+    }
+
+    device.cmd_execute_commands(command_buffer, &secondary_command_buffers);
     device.cmd_end_render_pass(command_buffer);
     device.end_command_buffer(command_buffer)?;
 
@@ -109,7 +115,8 @@ unsafe fn update_secondary_command_buffer(
     model_index: usize,
     entity: &Entity,
 ) -> Result<()> {
-    let command_buffer = framebundle.secondary_command_buffers[model_index];
+    let entity_command_bundle = &framebundle.entity_command_bundles[model_index];
+    let command_buffer = entity_command_bundle.secondary_command_buffer;
 
     let inheritance_info = vk::CommandBufferInheritanceInfo::builder()
         .render_pass(render_pass)
@@ -122,10 +129,15 @@ unsafe fn update_secondary_command_buffer(
 
     device.begin_command_buffer(command_buffer, &info)?;
     device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
-    device.cmd_bind_vertex_buffers(command_buffer, 0, &[framebundle.vertex_buffer], &[0]);
+    device.cmd_bind_vertex_buffers(
+        command_buffer,
+        0,
+        &[entity_command_bundle.vertex_buffer],
+        &[0],
+    );
     device.cmd_bind_index_buffer(
         command_buffer,
-        framebundle.index_buffer,
+        entity_command_bundle.index_buffer,
         0,
         vk::IndexType::UINT32,
     );

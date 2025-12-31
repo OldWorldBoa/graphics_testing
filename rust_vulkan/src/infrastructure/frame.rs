@@ -25,14 +25,19 @@ pub struct FrameBundle {
     pub frame_buffer: vk::Framebuffer,
     pub command_pool: vk::CommandPool,
     pub primary_command_buffer: vk::CommandBuffer,
-    pub secondary_command_buffers: Vec<vk::CommandBuffer>,
+    pub entity_command_bundles: Vec<EntityCommandBundle>,
+    pub uniform_buffer: vk::Buffer,
+    pub uniform_buffer_memory: vk::DeviceMemory,
+    pub descriptor_set: vk::DescriptorSet,
+}
+
+#[derive(Debug, Clone)]
+pub struct EntityCommandBundle {
+    pub secondary_command_buffer: vk::CommandBuffer,
     pub vertex_buffer: vk::Buffer,
     pub vertex_buffer_memory: vk::DeviceMemory,
     pub index_buffer: vk::Buffer,
     pub index_buffer_memory: vk::DeviceMemory,
-    pub uniform_buffer: vk::Buffer,
-    pub uniform_buffer_memory: vk::DeviceMemory,
-    pub descriptor_set: vk::DescriptorSet,
 }
 
 impl FrameBundle {
@@ -59,7 +64,7 @@ impl FrameBundle {
 
     /// # Safety
     /// Check the vulkan docs for safety info
-    pub unsafe fn update_vertex_buffer(
+    pub unsafe fn update_vertex_buffers(
         &self,
         instance: &Instance,
         device: &Device,
@@ -67,39 +72,39 @@ impl FrameBundle {
         graphics_queue: vk::Queue,
         scene_data: &SceneData,
     ) -> Result<()> {
-        let vertices = &scene_data.entities[0].vertex_data;
-        let size = (size_of::<Vertex>() * vertices.len()) as u64;
+        for i in 0..scene_data.entities.len() {
+            let vertices = &scene_data.entities[i].vertex_data;
+            let size = (size_of::<Vertex>() * vertices.len()) as u64;
+            // Create staging buffers
+            let (staging_buffer, staging_buffer_memory) = create_buffer(
+                instance,
+                device,
+                physical_device,
+                size,
+                vk::BufferUsageFlags::TRANSFER_SRC,
+                vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
+            )?;
 
-        // Create staging buffers
-        let (staging_buffer, staging_buffer_memory) = create_buffer(
-            instance,
-            device,
-            physical_device,
-            size,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
-        )?;
+            // Copy (staging)
+            let memory =
+                device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
 
-        // Copy (staging)
-        let memory =
-            device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
+            memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
+            device.unmap_memory(staging_buffer_memory);
 
-        memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
-        device.unmap_memory(staging_buffer_memory);
+            // Copy (vertex)
+            copy_buffer(
+                device,
+                self.command_pool,
+                graphics_queue,
+                staging_buffer,
+                self.entity_command_bundles[i].vertex_buffer,
+                size,
+            )?;
 
-        // Copy (vertex)
-        copy_buffer(
-            device,
-            self.command_pool,
-            graphics_queue,
-            staging_buffer,
-            self.vertex_buffer,
-            size,
-        )?;
-
-        device.destroy_buffer(staging_buffer, None);
-        device.free_memory(staging_buffer_memory, None);
-
+            device.destroy_buffer(staging_buffer, None);
+            device.free_memory(staging_buffer_memory, None);
+        }
         Ok(())
     }
 }
@@ -140,8 +145,8 @@ pub unsafe fn create_framebundles(
             .command_buffer_count(1);
         let primary_command_buffer = device.allocate_command_buffers(&allocate_info)?[0];
 
-        let mut secondary_command_buffers = vec![];
-        for _ in 0..scene_data.entities.len() {
+        let mut entity_command_bundles = vec![];
+        for j in 0..scene_data.entities.len() {
             let allocate_info = vk::CommandBufferAllocateInfo::builder()
                 .command_pool(command_pool)
                 .level(vk::CommandBufferLevel::SECONDARY)
@@ -149,26 +154,32 @@ pub unsafe fn create_framebundles(
 
             let command_buffer = device.allocate_command_buffers(&allocate_info)?[0];
 
-            secondary_command_buffers.push(command_buffer);
+            let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
+                instance,
+                device,
+                graphics_queue,
+                physical_device,
+                command_pool,
+                &scene_data.entities[j].vertex_data,
+            )?;
+
+            let (index_buffer, index_buffer_memory) = create_index_buffer(
+                instance,
+                device,
+                command_pool,
+                graphics_queue,
+                physical_device,
+                &scene_data.entities[j].vertex_indices,
+            )?;
+
+            entity_command_bundles.push(EntityCommandBundle {
+                secondary_command_buffer: command_buffer,
+                vertex_buffer,
+                vertex_buffer_memory,
+                index_buffer,
+                index_buffer_memory,
+            });
         }
-
-        let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
-            instance,
-            device,
-            graphics_queue,
-            physical_device,
-            command_pool,
-            &scene_data.entities[0].vertex_data,
-        )?;
-
-        let (index_buffer, index_buffer_memory) = create_index_buffer(
-            instance,
-            device,
-            command_pool,
-            graphics_queue,
-            physical_device,
-            &scene_data.entities[0].vertex_indices,
-        )?;
 
         let (uniform_buffer, uniform_buffer_memory) = create_buffer(
             instance,
@@ -219,11 +230,7 @@ pub unsafe fn create_framebundles(
             )?,
             command_pool,
             primary_command_buffer,
-            secondary_command_buffers,
-            vertex_buffer,
-            vertex_buffer_memory,
-            index_buffer,
-            index_buffer_memory,
+            entity_command_bundles,
             uniform_buffer,
             uniform_buffer_memory,
             descriptor_set: desc_sets[i],
